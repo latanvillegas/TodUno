@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout del código
+      - name: Checkout del repositorio
         uses: actions/checkout@v4
 
       - name: Configurar JDK 21
@@ -35,22 +35,35 @@ jobs:
       - name: Configurar Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Aceptar licencias de Android SDK e instalar API 36.1
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager --install "platform-tools" "platforms;android-36.1" "build-tools;36.0.0" || yes | sdkmanager --licenses
+
       - name: Configurar Gradle 9.3.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.3.1"
 
-      - name: Preparar archivo .env por defecto si no existe
+      - name: Preparar archivo .env y permisos de Gradle Wrapper
         run: |
           if [ ! -f ".env" ] && [ -f ".env.example" ]; then
             cp .env.example .env
           fi
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+          fi
 
-      - name: Generar debug.keystore si no existe
+      - name: Preparar Keystores de Debug y Release
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          SECRET_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          SECRET_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          if [ ! -f "debug.keystore" ]; then
+          # 1. Asegurar debug.keystore en la raíz del proyecto
+          if [ ! -f "${GITHUB_WORKSPACE}/debug.keystore" ]; then
             keytool -genkeypair -v \
-              -keystore debug.keystore \
+              -keystore "${GITHUB_WORKSPACE}/debug.keystore" \
               -storepass android \
               -alias androiddebugkey \
               -keypass android \
@@ -60,20 +73,16 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-      - name: Preparar Keystore de Release (Secreto o Autogenerado)
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          SECRET_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          SECRET_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
+          # 2. Asegurar my-upload-key.jks para firma Release
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$SECRET_STORE_PASSWORD" ] && [ -n "$SECRET_KEY_PASSWORD" ]; then
             echo "Usando Keystore configurado en GitHub Secrets..."
             echo "$KEYSTORE_BASE64" | base64 --decode > "${GITHUB_WORKSPACE}/my-upload-key.jks"
-            echo "KEYSTORE_PATH=${GITHUB_WORKSPACE}/my-upload-key.jks" >> $GITHUB_ENV
-            echo "STORE_PASSWORD=${SECRET_STORE_PASSWORD}" >> $GITHUB_ENV
-            echo "KEY_PASSWORD=${SECRET_KEY_PASSWORD}" >> $GITHUB_ENV
+            echo "KEYSTORE_PATH=${GITHUB_WORKSPACE}/my-upload-key.jks" >> "$GITHUB_ENV"
+            echo "STORE_PASSWORD=${SECRET_STORE_PASSWORD}" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=${SECRET_KEY_PASSWORD}" >> "$GITHUB_ENV"
           else
-            echo "Generando Keystore de firma automática para Release..."
+            echo "Generando Keystore automático para Release..."
+            rm -f "${GITHUB_WORKSPACE}/my-upload-key.jks"
             keytool -genkeypair -v \
               -keystore "${GITHUB_WORKSPACE}/my-upload-key.jks" \
               -storepass selenia123 \
@@ -83,16 +92,16 @@ jobs:
               -keysize 2048 \
               -validity 10000 \
               -dname "CN=Selenia Lunar,OU=Mobile,O=Selenia,L=Madrid,S=Madrid,C=ES"
-            echo "KEYSTORE_PATH=${GITHUB_WORKSPACE}/my-upload-key.jks" >> $GITHUB_ENV
-            echo "STORE_PASSWORD=selenia123" >> $GITHUB_ENV
-            echo "KEY_PASSWORD=selenia123" >> $GITHUB_ENV
+            echo "KEYSTORE_PATH=${GITHUB_WORKSPACE}/my-upload-key.jks" >> "$GITHUB_ENV"
+            echo "STORE_PASSWORD=selenia123" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=selenia123" >> "$GITHUB_ENV"
           fi
 
-      - name: Ejecutar pruebas unitarias
-        run: gradle :app:testDebugUnitTest
+      - name: Ejecutar pruebas unitarias (JVM)
+        run: ./gradlew :app:testDebugUnitTest --tests "com.example.ExampleUnitTest" --no-configuration-cache
 
       - name: Compilar APK Debug y Release firmadas
-        run: gradle :app:assembleDebug :app:assembleRelease
+        run: ./gradlew :app:assembleDebug :app:assembleRelease --no-configuration-cache --stacktrace
 
       - name: Preparar archivos APK para distribución
         run: |
@@ -118,12 +127,13 @@ jobs:
           else
             TAG_NAME="v1.0.${GITHUB_RUN_NUMBER}"
           fi
-          echo "tag=${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: Publicar Release en GitHub con APKs adjuntas
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           name: "Selenia: Luna y Calc ${{ steps.version.outputs.tag }}"
           body: |
             ## 🌙 Selenia: Calendario, Fases de la Luna y Calculadora (${{ steps.version.outputs.tag }})
@@ -135,7 +145,7 @@ jobs:
 
             ### ✨ Características incluidas
             - 📅 **Calendario Lunar Mensual**: Fases de la luna día por día, hitos mensuales y notas personales por fecha.
-            - 🌕 **Observatorio Lunar**: Esfera lunar interactiva en Canvas, soporte Hemisferio Norte/Sur, distancia orbital, elongación eclíptica y guía tradicional de mareas y siembra.
+            - 🌕 **Observatorio Lunar**: Esfera lunar interactiva en Canvas, soporte Hemisferio Norte/Sur, distancia orbital, elongación eclíptico y guía tradicional de mareas y siembra.
             - 🧮 **Calculadora Científica y de Fechas**: Funciones trigonométricas, constantes astronómicas (`29.5306 días`), conversión entre días y meses sinódicos, y cálculo de intervalos entre fechas.
           files: |
             dist/Selenia-Luna-y-Calc-release.apk
