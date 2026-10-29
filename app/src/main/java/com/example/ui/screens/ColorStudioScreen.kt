@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tune
+import com.example.ui.components.iconVector
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -110,10 +111,21 @@ fun ColorStudioScreen(
     }
 
     val active = uiState.activeColorSwatch
-    val composeColor = Color(active.rgb.r, active.rgb.g, active.rgb.b)
-    val whiteContrast = ColorHarmonyEngine.contrastRatioWithWhite(active.rgb)
-    val blackContrast = ColorHarmonyEngine.contrastRatioWithBlack(active.rgb)
+    val composeColor = remember(active.rgb) { Color(active.rgb.r, active.rgb.g, active.rgb.b) }
+    val whiteContrast = remember(active.rgb) { ColorHarmonyEngine.contrastRatioWithWhite(active.rgb) }
+    val blackContrast = remember(active.rgb) { ColorHarmonyEngine.contrastRatioWithBlack(active.rgb) }
     val idealOnColor = if (whiteContrast >= blackContrast) Color.White else Color(0xFF0B1026)
+
+    // Memoize harmonies and tonal scales by active.hsl so scrolling the LazyColumn never recomputes them
+    val memoizedHarmonies = remember(active.hsl) {
+        ColorHarmonyEngine.buildColorHarmonies(active.hsl)
+    }
+    val memoizedLuminosityScale = remember(active.hsl) {
+        ColorHarmonyEngine.buildLuminosityScale(active.hsl)
+    }
+    val memoizedSaturationTones = remember(active.hsl) {
+        ColorHarmonyEngine.buildSaturationTones(active.hsl)
+    }
 
     fun copyValue(label: String, text: String) {
         clipboardManager.setText(AnnotatedString(text))
@@ -691,8 +703,10 @@ fun ColorStudioScreen(
                 }
 
                 ColorStudioSubTab.COMBINATIONS -> {
-                    val harmonies = ColorHarmonyEngine.buildColorHarmonies(active.hsl)
-                    items(harmonies) { group ->
+                    items(
+                        items = memoizedHarmonies,
+                        key = { it.title }
+                    ) { group ->
                         Card(
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             shape = MaterialTheme.shapes.large,
@@ -734,24 +748,21 @@ fun ColorStudioScreen(
                 }
 
                 ColorStudioSubTab.TONES_AND_SHADES -> {
-                    val luminosityScale = ColorHarmonyEngine.buildLuminosityScale(active.hsl)
-                    val saturationTones = ColorHarmonyEngine.buildSaturationTones(active.hsl)
-
-                    item {
+                    item(key = "luminosity_scale_card") {
                         TonalScaleCard(
                             title = "Matices y Sombras (Escala de Luminosidad L%)",
                             subtitle = "10 variaciones desde tintes claros pastel (94%) hasta sombras profundas (8%). Toca cualquier tono para seleccionarlo.",
-                            swatches = luminosityScale,
+                            swatches = memoizedLuminosityScale,
                             onSelectSwatch = { onApplyHex(it.hex) },
                             onCopySwatch = { copyValue("Tono", "${it.hex} (${it.rgb.formatCss()})") }
                         )
                     }
 
-                    item {
+                    item(key = "saturation_tones_card") {
                         TonalScaleCard(
                             title = "Tonos de Saturación (Escala S%)",
                             subtitle = "8 variaciones desde color puro vibrante (100%) hasta gris neutro (4%).",
-                            swatches = saturationTones,
+                            swatches = memoizedSaturationTones,
                             onSelectSwatch = { onApplyHex(it.hex) },
                             onCopySwatch = { copyValue("Saturación", "${it.hex} (${it.hsl.formatCss()})") }
                         )
@@ -759,7 +770,10 @@ fun ColorStudioScreen(
                 }
 
                 ColorStudioSubTab.COLOR_CATALOG -> {
-                    items(ColorHarmonyEngine.NAMED_COLOR_FAMILIES) { family ->
+                    items(
+                        items = ColorHarmonyEngine.NAMED_COLOR_FAMILIES,
+                        key = { it.familyName }
+                    ) { family ->
                         Card(
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             shape = MaterialTheme.shapes.large,
@@ -1623,13 +1637,21 @@ private fun ModuleSkinApplicationCard(
                     } else {
                         uiState.skinFor(target).isCustomApplied
                     }
+                    val targetIcon = target.iconVector()
                     FilterChip(
                         selected = isSelected,
                         onClick = { onSelectTarget(target) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = targetIcon,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
                         label = {
                             Text(
                                 text = buildString {
-                                    append("${target.emoji} ${target.spanishTitle}")
+                                    append(target.spanishTitle)
                                     if (hasCustom) append(" • Activo")
                                 }
                             )
@@ -1672,10 +1694,13 @@ private fun ModuleSkinApplicationCard(
                             alphaIntensity = 0.85f,
                             modifier = Modifier.fillMaxSize()
                         )
-                        Text(
-                            text = selectedTarget.emoji,
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.align(Alignment.Center)
+                        Icon(
+                            imageVector = selectedTarget.iconVector(),
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier
+                                .size(26.dp)
+                                .align(Alignment.Center)
                         )
                     }
 
@@ -1806,7 +1831,13 @@ private fun ModuleSkinApplicationCard(
                         },
                         modifier = Modifier.testTag("apply_and_open_module_button")
                     ) {
-                        Text("Aplicar y Ver ${selectedTarget.emoji}")
+                        Icon(
+                            imageVector = selectedTarget.iconVector(),
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Aplicar y Ver")
                     }
                 }
 

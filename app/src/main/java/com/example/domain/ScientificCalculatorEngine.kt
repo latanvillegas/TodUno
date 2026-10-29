@@ -1,5 +1,6 @@
 package com.example.domain
 
+import androidx.compose.runtime.Immutable
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.util.Locale
@@ -13,6 +14,7 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.math.tan
 
+@Immutable
 data class CalculationRecord(
     val id: Long,
     val expression: String,
@@ -29,7 +31,9 @@ object ScientificCalculatorEngine {
     fun formatNumber(value: Double): String {
         if (value.isNaN() || value.isInfinite()) return "Error"
         val rounded = if (kotlin.math.abs(value) < 1e-12) 0.0 else value
-        return decimalFormat.format(rounded)
+        synchronized(decimalFormat) {
+            return decimalFormat.format(rounded)
+        }
     }
 
     /**

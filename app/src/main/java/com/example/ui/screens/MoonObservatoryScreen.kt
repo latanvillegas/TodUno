@@ -35,6 +35,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,13 +51,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.domain.LunarAlmanacCategory
 import com.example.domain.LunarAstronomer
+import com.example.domain.LunarDayInfo
+import com.example.domain.LunarTraditionalGoal
 import com.example.domain.MoonPhaseType
 import com.example.domain.SimpleDate
 import com.example.ui.ModuleThemeTarget
 import com.example.ui.SeleniaUiState
 import com.example.ui.components.ModuleSkinBox
+import com.example.ui.components.MoonPhaseBadgeIcon
 import com.example.ui.components.RealisticMoonCanvas
+import com.example.ui.components.SeleniaIconBadge
+import com.example.ui.components.accentColor
+import com.example.ui.components.iconVector
 import kotlin.math.roundToInt
 
 @Composable
@@ -331,6 +343,7 @@ fun MoonObservatoryScreen(
                                 val isActive = phase == info.phaseType
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(10.dp))
                                         .background(
@@ -342,9 +355,11 @@ fun MoonObservatoryScreen(
                                         )
                                         .padding(horizontal = 4.dp, vertical = 6.dp)
                                 ) {
-                                    Text(
-                                        text = phase.emoji,
-                                        style = MaterialTheme.typography.titleMedium
+                                    com.example.ui.components.MoonPhaseBadgeIcon(
+                                        phaseType = phase,
+                                        size = 24.dp,
+                                        litColor = customMoonLitColor,
+                                        southernHemisphere = !uiState.isNorthernHemisphere
                                     )
                                     Text(
                                         text = phase.shortLabel.take(6),
@@ -402,38 +417,15 @@ fun MoonObservatoryScreen(
                 }
             }
 
-            // 4. Natural Almanac & Biorhythm Recommendations
+            // 4. Complete Traditional Lunar Guide & Almanac (Beauty, Hair, Wellness, Gardening, Astronomy, Tides, Fishing, Home)
             item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = MaterialTheme.shapes.large,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.biorhythm_activity_title),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        AlmanacTipRow(
-                            badge = "🌱 Agricultura y Jardín",
-                            description = info.phaseType.gardeningTip
-                        )
-                        AlmanacTipRow(
-                            badge = "🔭 Observación Astronómica",
-                            description = info.phaseType.stargazingTip
-                        )
-                        AlmanacTipRow(
-                            badge = "🌊 Dinámica de Mareas",
-                            description = info.phaseType.tideEffect
-                        )
-                    }
-                }
+                TraditionalLunarAlmanacSection(
+                    info = info,
+                    selectedDate = uiState.selectedDate,
+                    isNorthernHemisphere = uiState.isNorthernHemisphere,
+                    moonLitColor = customMoonLitColor,
+                    onSelectDate = onSelectDate
+                )
             }
 
             // 5. Upcoming 4 Major Phases
@@ -475,9 +467,11 @@ fun MoonObservatoryScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
-                                        Text(
-                                            text = milestone.phaseType.emoji,
-                                            style = MaterialTheme.typography.headlineMedium
+                                        com.example.ui.components.MoonPhaseBadgeIcon(
+                                            phaseType = milestone.phaseType,
+                                            size = 34.dp,
+                                            litColor = customMoonLitColor,
+                                            southernHemisphere = !uiState.isNorthernHemisphere
                                         )
                                         Column {
                                             Text(
@@ -508,6 +502,355 @@ fun MoonObservatoryScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TraditionalLunarAlmanacSection(
+    info: LunarDayInfo,
+    selectedDate: SimpleDate,
+    isNorthernHemisphere: Boolean,
+    moonLitColor: Color,
+    onSelectDate: (SimpleDate) -> Unit
+) {
+    var selectedCategory by rememberSaveable {
+        mutableStateOf(LunarAlmanacCategory.ALL)
+    }
+    var selectedGoal by rememberSaveable {
+        mutableStateOf(LunarTraditionalGoal.FAST_HAIR_GROWTH)
+    }
+
+    val allGuides = info.phaseType.almanacGuides()
+    val visibleGuides = if (selectedCategory == LunarAlmanacCategory.ALL) {
+        allGuides
+    } else {
+        allGuides.filter { it.category == selectedCategory }
+    }
+
+    val upcomingGoalDates = remember(selectedDate, selectedGoal) {
+        LunarAstronomer.getUpcomingIdealDatesForGoal(selectedDate, selectedGoal, count = 4)
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        // Card A: Complete Traditional Guide for the Active Moon Phase
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = MaterialTheme.shapes.large,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("traditional_almanac_card")
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.biorhythm_activity_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "Belleza, cabello, bienestar, agricultura, astronomía, mareas, pesca y hogar en ${info.phaseType.spanishName}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Quick Summary Pill Strip for Hair + Beauty on this day with custom vector badges
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    QuickAlmanacHighlightPill(
+                        icon = LunarAlmanacCategory.HAIR_CARE.iconVector(),
+                        tint = LunarAlmanacCategory.HAIR_CARE.accentColor(),
+                        label = "Cabello",
+                        value = info.phaseType.hairActionBadge,
+                        modifier = Modifier.weight(1f)
+                    )
+                    QuickAlmanacHighlightPill(
+                        icon = LunarAlmanacCategory.BEAUTY_SKIN.iconVector(),
+                        tint = LunarAlmanacCategory.BEAUTY_SKIN.accentColor(),
+                        label = "Belleza y Piel",
+                        value = info.phaseType.beautyActionBadge,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // Category Filter Row with vector leading icons
+                androidx.compose.foundation.lazy.LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(com.example.domain.LunarAlmanacCategory.entries.size) { index ->
+                        val cat = com.example.domain.LunarAlmanacCategory.entries[index]
+                        val catIcon = cat.iconVector()
+                        val catColor = cat.accentColor()
+                        FilterChip(
+                            selected = selectedCategory == cat,
+                            onClick = { selectedCategory = cat },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = catIcon,
+                                    contentDescription = null,
+                                    tint = if (selectedCategory == cat) MaterialTheme.colorScheme.primary else catColor,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
+                            label = { Text(cat.shortChipLabel) },
+                            modifier = Modifier.testTag("almanac_cat_${cat.name.lowercase()}")
+                        )
+                    }
+                }
+
+                // Detailed Guide Cards with glowing SeleniaIconBadge
+                visibleGuides.forEach { guide ->
+                    AlmanacTipRow(
+                        category = guide.category,
+                        badge = guide.badgeTitle,
+                        actionHighlight = guide.actionHighlight,
+                        description = guide.description,
+                        scoreOutOfFive = guide.scoreOutOfFive
+                    )
+                }
+            }
+        }
+
+        // Card B: Interactive Best Lunar Dates Finder for Beauty, Haircuts, Depilation, Planting & Timber
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = MaterialTheme.shapes.large,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("lunar_beauty_goal_finder_card")
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "Buscador de Fechas Ideales (Belleza, Corte y Tradición)",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+                Text(
+                    text = "Elige tu objetivo y toca cualquier fecha recomendada para inspeccionar su Luna:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                androidx.compose.foundation.lazy.LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(com.example.domain.LunarTraditionalGoal.entries.size) { idx ->
+                        val goal = com.example.domain.LunarTraditionalGoal.entries[idx]
+                        val goalIcon = goal.iconVector()
+                        val goalColor = goal.accentColor()
+                        FilterChip(
+                            selected = selectedGoal == goal,
+                            onClick = { selectedGoal = goal },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = goalIcon,
+                                    contentDescription = null,
+                                    tint = if (selectedGoal == goal) MaterialTheme.colorScheme.primary else goalColor,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
+                            label = { Text(goal.title) },
+                            modifier = Modifier.testTag("goal_chip_${goal.name.lowercase()}")
+                        )
+                    }
+                }
+
+                val isSelectedDateIdealForGoal = info.phaseType in selectedGoal.idealPhases
+                val activeGoalIcon = selectedGoal.iconVector()
+                val activeGoalColor = selectedGoal.accentColor()
+
+                Surface(
+                    color = if (isSelectedDateIdealForGoal) {
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                com.example.ui.components.SeleniaIconBadge(
+                                    icon = activeGoalIcon,
+                                    tint = activeGoalColor,
+                                    size = 34.dp,
+                                    iconSize = 18.dp
+                                )
+                                Text(
+                                    text = selectedGoal.title,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            Surface(
+                                color = if (isSelectedDateIdealForGoal) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceVariant
+                                },
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    text = if (isSelectedDateIdealForGoal) "¡Óptimo en esta fecha!" else "Ver próximas fechas",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSelectedDateIdealForGoal) {
+                                        MaterialTheme.colorScheme.onPrimary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = selectedGoal.subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "Fases ideales: " + selectedGoal.idealPhases.joinToString(" • ") { it.spanishName },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+
+                // Upcoming recommended dates row with MoonPhaseBadgeIcon medallions
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    upcomingGoalDates.forEach { dayInfo ->
+                        val isCurrent = dayInfo.date == selectedDate
+                        Surface(
+                            onClick = { onSelectDate(dayInfo.date) },
+                            color = if (isCurrent) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .border(
+                                    width = if (isCurrent) 1.5.dp else 0.5.dp,
+                                    color = if (isCurrent) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                                    },
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                com.example.ui.components.MoonPhaseBadgeIcon(
+                                    phaseType = dayInfo.phaseType,
+                                    size = 26.dp,
+                                    litColor = moonLitColor,
+                                    southernHemisphere = !isNorthernHemisphere
+                                )
+                                Text(
+                                    text = dayInfo.date.formatSpanishShort().substringBeforeLast(" "),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    textAlign = TextAlign.Center
+                                )
+                                Text(
+                                    text = dayInfo.phaseType.shortLabel,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickAlmanacHighlightPill(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    tint: Color,
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+        shape = RoundedCornerShape(12.dp),
+        modifier = modifier
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            com.example.ui.components.SeleniaIconBadge(
+                icon = icon,
+                tint = tint,
+                size = 32.dp,
+                iconSize = 16.dp
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1
+                )
             }
         }
     }
@@ -555,28 +898,71 @@ private fun TelemetryStatCard(
 
 @Composable
 private fun AlmanacTipRow(
+    category: LunarAlmanacCategory,
     badge: String,
-    description: String
+    actionHighlight: String,
+    description: String,
+    scoreOutOfFive: Int
 ) {
+    val catIcon = category.iconVector()
+    val catColor = category.accentColor()
+
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-        shape = MaterialTheme.shapes.small,
+        shape = MaterialTheme.shapes.medium,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Text(
-                text = badge,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.secondary
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    com.example.ui.components.SeleniaIconBadge(
+                        icon = catIcon,
+                        tint = catColor,
+                        size = 34.dp,
+                        iconSize = 18.dp
+                    )
+                    Text(
+                        text = category.spanishTitle,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        text = actionHighlight,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+            }
             Text(
                 text = description,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
+            Text(
+                text = "Afinidad lunar: " + "★".repeat(scoreOutOfFive) + "☆".repeat((5 - scoreOutOfFive).coerceAtLeast(0)),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }
+

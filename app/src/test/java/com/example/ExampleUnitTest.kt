@@ -2,21 +2,50 @@ package com.example
 
 import com.example.domain.ColorHarmonyEngine
 import com.example.domain.GradientStyleType
+import com.example.domain.LunarAlmanacCategory
 import com.example.domain.LunarAstronomer
+import com.example.domain.LunarTraditionalGoal
 import com.example.domain.MoonPhaseType
 import com.example.domain.ScientificCalculatorEngine
 import com.example.domain.SimpleDate
+import com.example.ui.ModuleThemeTarget
+import com.example.ui.SeleniaViewModel
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ExampleUnitTest {
     @Test
-    fun referenceNewMoon_isNewMoonPhase() {
-        val info = LunarAstronomer.getLunarInfo(SimpleDate(2000, 1, 6))
-        assertEquals(MoonPhaseType.NEW_MOON, info.phaseType)
-        assertTrue(info.illuminationPercent < 2.0)
+    fun referenceNewMoon_isNewMoonPhase_andLruCacheReturnsSameInstance() {
+        val date = SimpleDate(2000, 1, 6)
+        val info1 = LunarAstronomer.getLunarInfo(date)
+        val info2 = LunarAstronomer.getLunarInfo(date)
+        assertSame(info1, info2)
+        assertEquals(MoonPhaseType.NEW_MOON, info1.phaseType)
+        assertTrue(info1.illuminationPercent < 2.0)
+        // Jan 6, 2000 was a Thursday ("Jueves")
+        assertEquals("Jueves", LunarAstronomer.getDayOfWeekSpanish(2000, 1, 6))
+    }
+
+    @Test
+    fun traditionalLunarAlmanac_providesAllEightCategoriesAndIdealDates() {
+        MoonPhaseType.entries.forEach { phase ->
+            val guides = phase.almanacGuides()
+            assertEquals(8, guides.size)
+            assertTrue(guides.any { it.category == LunarAlmanacCategory.BEAUTY_SKIN })
+            assertTrue(guides.any { it.category == LunarAlmanacCategory.HAIR_CARE })
+            assertTrue(guides.any { it.category == LunarAlmanacCategory.WELLNESS })
+        }
+
+        val start = SimpleDate(2026, 10, 29)
+        LunarTraditionalGoal.entries.forEach { goal ->
+            val upcoming = LunarAstronomer.getUpcomingIdealDatesForGoal(start, goal, count = 4)
+            assertTrue(upcoming.isNotEmpty())
+            assertTrue(upcoming.all { it.phaseType in goal.idealPhases })
+        }
     }
 
     @Test
@@ -54,4 +83,25 @@ class ExampleUnitTest {
         val cssMesh = ColorHarmonyEngine.formatCssGradient(GradientStyleType.MESH, 135, stops)
         assertTrue(cssMesh.contains("radial-gradient"))
     }
+
+    @Test
+    fun viewModel_appliesAndResetsPerModuleVisualSkinIndependently() {
+        val vm = SeleniaViewModel()
+        vm.updateColorFromHex("#EC4899")
+        vm.setGradientStyle(GradientStyleType.RADIAL)
+        vm.applyActiveColorAndGradientToTarget(ModuleThemeTarget.MOON_OBSERVATORY)
+
+        val stateAfterMoon = vm.uiState.value
+        val moonSkin = stateAfterMoon.skinFor(ModuleThemeTarget.MOON_OBSERVATORY)
+        val calendarSkin = stateAfterMoon.skinFor(ModuleThemeTarget.CALENDAR)
+
+        assertTrue(moonSkin.isCustomApplied)
+        assertEquals("#EC4899", moonSkin.primarySwatch.hex)
+        assertEquals(GradientStyleType.RADIAL, moonSkin.gradientStyle)
+        assertFalse(calendarSkin.isCustomApplied)
+
+        vm.resetSkinForTarget(ModuleThemeTarget.MOON_OBSERVATORY)
+        assertFalse(vm.uiState.value.skinFor(ModuleThemeTarget.MOON_OBSERVATORY).isCustomApplied)
+    }
 }
+

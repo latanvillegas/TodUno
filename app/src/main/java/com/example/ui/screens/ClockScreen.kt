@@ -25,11 +25,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.HourglassBottom
+import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.WbSunny
+import com.example.ui.components.SeleniaIconBadge
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -43,6 +46,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -66,6 +70,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.example.R
 import com.example.ui.ClockSubTab
 import com.example.ui.ModuleThemeTarget
@@ -81,16 +88,39 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
+// Precomputed 60-tick unit circle cosine/sine tables for the analog watch face:
+// eliminates 120 trig calls per draw frame.
+private val WATCH_TICK_COS = FloatArray(60) { i ->
+    cos((i * 6.0 - 90.0) * (PI / 180.0)).toFloat()
+}
+private val WATCH_TICK_SIN = FloatArray(60) { i ->
+    sin((i * 6.0 - 90.0) * (PI / 180.0)).toFloat()
+}
+private val OUTER_BEZEL_STROKE = Stroke(width = 3.2f)
+private val INNER_BEZEL_STROKE = Stroke(width = 1.4f)
+
+@Immutable
 data class StopwatchLap(
     val lapNumber: Int,
     val lapDurationMs: Long,
     val totalElapsedMs: Long
 )
 
+@Immutable
 private data class WorldCitySpec(
     val city: String,
     val region: String,
     val timeZoneId: String
+) {
+    val timeZone: TimeZone = TimeZone.getTimeZone(timeZoneId)
+}
+
+@Immutable
+private data class WorldCityFormattedEntry(
+    val city: String,
+    val region: String,
+    val isDaylight: Boolean,
+    val timeText: String
 )
 
 private val WORLD_CITIES = listOf(
@@ -112,12 +142,18 @@ fun ClockScreen(
     modifier: Modifier = Modifier
 ) {
     val skin = uiState.skinFor(ModuleThemeTarget.CLOCK)
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     var currentMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            currentMillis = System.currentTimeMillis()
-            delay(200L)
+    // Battery-conscious ticker: only runs when WORLD_CLOCK tab is active AND lifecycle is STARTED.
+    LaunchedEffect(uiState.clockSubTab, lifecycleOwner) {
+        if (uiState.clockSubTab == ClockSubTab.WORLD_CLOCK) {
+            lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    currentMillis = System.currentTimeMillis()
+                    delay(250L)
+                }
+            }
         }
     }
 
@@ -128,12 +164,17 @@ fun ClockScreen(
     var stopwatchDisplayMs by remember { mutableLongStateOf(0L) }
     val stopwatchLaps = remember { mutableStateListOf<StopwatchLap>() }
 
-    LaunchedEffect(stopwatchRunning, stopwatchAccumulatedMs, stopwatchLastStartMs) {
-        while (stopwatchRunning) {
-            stopwatchDisplayMs = stopwatchAccumulatedMs + (System.currentTimeMillis() - stopwatchLastStartMs)
-            delay(30L)
+    LaunchedEffect(stopwatchRunning, stopwatchAccumulatedMs, stopwatchLastStartMs, lifecycleOwner) {
+        if (stopwatchRunning) {
+            lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (stopwatchRunning) {
+                    stopwatchDisplayMs = stopwatchAccumulatedMs + (System.currentTimeMillis() - stopwatchLastStartMs)
+                    delay(33L) // ~30 fps digital readout while keeping wall-clock accuracy
+                }
+            }
+        } else {
+            stopwatchDisplayMs = stopwatchAccumulatedMs
         }
-        stopwatchDisplayMs = stopwatchAccumulatedMs
     }
 
     // Timer state
@@ -143,15 +184,19 @@ fun ClockScreen(
     var timerEndTargetMs by rememberSaveable { mutableLongStateOf(0L) }
     var timerFinishedAlert by rememberSaveable { mutableStateOf(false) }
 
-    LaunchedEffect(timerRunning, timerEndTargetMs) {
-        while (timerRunning) {
-            val left = (timerEndTargetMs - System.currentTimeMillis()).coerceAtLeast(0L)
-            timerRemainingMs = left
-            if (left == 0L) {
-                timerRunning = false
-                timerFinishedAlert = true
+    LaunchedEffect(timerRunning, timerEndTargetMs, lifecycleOwner) {
+        if (timerRunning) {
+            lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (timerRunning) {
+                    val left = (timerEndTargetMs - System.currentTimeMillis()).coerceAtLeast(0L)
+                    timerRemainingMs = left
+                    if (left == 0L) {
+                        timerRunning = false
+                        timerFinishedAlert = true
+                    }
+                    delay(50L)
+                }
             }
-            delay(50L)
         }
     }
 
@@ -323,41 +368,75 @@ private fun AstronomicalAndWorldClockContent(
     onToggle24Hour: () -> Unit,
     onOpenColorCustomizer: () -> Unit
 ) {
-    val localCal = remember(currentMillis) {
-        Calendar.getInstance().apply { timeInMillis = currentMillis }
-    }
-    val utcCal = remember(currentMillis) {
-        Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = currentMillis }
-    }
+    // Reuse Calendar instances instead of allocating new objects every 250ms tick
+    val localCal = remember { Calendar.getInstance() }
+    val utcCal = remember { Calendar.getInstance(TimeZone.getTimeZone("UTC")) }
+    localCal.timeInMillis = currentMillis
+    utcCal.timeInMillis = currentMillis
 
     val hour24 = localCal.get(Calendar.HOUR_OF_DAY)
     val minute = localCal.get(Calendar.MINUTE)
     val second = localCal.get(Calendar.SECOND)
     val millis = localCal.get(Calendar.MILLISECOND)
 
-    val formattedDigitalTime = if (is24Hour) {
-        "%02d:%02d:%02d".format(Locale.US, hour24, minute, second)
-    } else {
-        val h12 = if (hour24 % 12 == 0) 12 else hour24 % 12
-        val amPm = if (hour24 < 12) "AM" else "PM"
-        "%02d:%02d:%02d %s".format(Locale.US, h12, minute, second, amPm)
+    val currentSecondEpoch = currentMillis / 1000L
+    val currentMinuteEpoch = currentMillis / 60_000L
+
+    // Digital strings only recompute once per second (1 Hz) instead of 4 Hz
+    val formattedDigitalTime = remember(currentSecondEpoch, is24Hour) {
+        if (is24Hour) {
+            "%02d:%02d:%02d".format(Locale.US, hour24, minute, second)
+        } else {
+            val h12 = if (hour24 % 12 == 0) 12 else hour24 % 12
+            val amPm = if (hour24 < 12) "AM" else "PM"
+            "%02d:%02d:%02d %s".format(Locale.US, h12, minute, second, amPm)
+        }
     }
 
-    val utcFormatted = "%02d:%02d:%02d UTC".format(
-        Locale.US,
-        utcCal.get(Calendar.HOUR_OF_DAY),
-        utcCal.get(Calendar.MINUTE),
-        utcCal.get(Calendar.SECOND)
-    )
+    val utcFormatted = remember(currentSecondEpoch) {
+        "%02d:%02d:%02d UTC".format(
+            Locale.US,
+            utcCal.get(Calendar.HOUR_OF_DAY),
+            utcCal.get(Calendar.MINUTE),
+            utcCal.get(Calendar.SECOND)
+        )
+    }
 
-    val jd = (currentMillis / 86400000.0) + 2440587.5
-    val d = jd - 2451545.0
-    var gmstHours = (18.697374558 + 24.06570982441908 * d) % 24.0
-    if (gmstHours < 0) gmstHours += 24.0
-    val gmstH = gmstHours.toInt()
-    val gmstM = ((gmstHours - gmstH) * 60.0).toInt()
-    val gmstS = ((((gmstHours - gmstH) * 60.0) - gmstM) * 60.0).toInt()
-    val gmstString = "%02dh %02dm %02ds".format(Locale.US, gmstH, gmstM, gmstS)
+    val gmstString = remember(currentSecondEpoch) {
+        val jd = (currentMillis / 86400000.0) + 2440587.5
+        val d = jd - 2451545.0
+        var gmstHours = (18.697374558 + 24.06570982441908 * d) % 24.0
+        if (gmstHours < 0) gmstHours += 24.0
+        val gmstH = gmstHours.toInt()
+        val gmstM = ((gmstHours - gmstH) * 60.0).toInt()
+        val gmstS = ((((gmstHours - gmstH) * 60.0) - gmstM) * 60.0).toInt()
+        "%02dh %02dm %02ds".format(Locale.US, gmstH, gmstM, gmstS)
+    }
+
+    // World city entries only change once per minute: memoize by currentMinuteEpoch!
+    val worldCityEntries = remember(currentMinuteEpoch, is24Hour) {
+        val cityCal = Calendar.getInstance()
+        WORLD_CITIES.map { citySpec ->
+            cityCal.timeZone = citySpec.timeZone
+            cityCal.timeInMillis = currentMillis
+            val cHour = cityCal.get(Calendar.HOUR_OF_DAY)
+            val cMin = cityCal.get(Calendar.MINUTE)
+            val isDaylight = cHour in 6..18
+            val timeText = if (is24Hour) {
+                "%02d:%02d".format(Locale.US, cHour, cMin)
+            } else {
+                val h12 = if (cHour % 12 == 0) 12 else cHour % 12
+                val amPm = if (cHour < 12) "AM" else "PM"
+                "%02d:%02d %s".format(Locale.US, h12, cMin, amPm)
+            }
+            WorldCityFormattedEntry(
+                city = citySpec.city,
+                region = citySpec.region,
+                isDaylight = isDaylight,
+                timeText = timeText
+            )
+        }
+    }
 
     val watchLitColor = if (skin.isCustomApplied) {
         Color(skin.primarySwatch.rgb.r, skin.primarySwatch.rgb.g, skin.primarySwatch.rgb.b)
@@ -580,20 +659,7 @@ private fun AstronomicalAndWorldClockContent(
                         color = MaterialTheme.colorScheme.onSurface
                     )
 
-                    WORLD_CITIES.forEach { citySpec ->
-                        val tz = TimeZone.getTimeZone(citySpec.timeZoneId)
-                        val cityCal = Calendar.getInstance(tz).apply { timeInMillis = currentMillis }
-                        val cHour = cityCal.get(Calendar.HOUR_OF_DAY)
-                        val cMin = cityCal.get(Calendar.MINUTE)
-                        val isDaylight = cHour in 6..18
-                        val timeText = if (is24Hour) {
-                            "%02d:%02d".format(Locale.US, cHour, cMin)
-                        } else {
-                            val h12 = if (cHour % 12 == 0) 12 else cHour % 12
-                            val amPm = if (cHour < 12) "AM" else "PM"
-                            "%02d:%02d %s".format(Locale.US, h12, cMin, amPm)
-                        }
-
+                    worldCityEntries.forEach { entry ->
                         Surface(
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                             shape = MaterialTheme.shapes.medium,
@@ -608,30 +674,41 @@ private fun AstronomicalAndWorldClockContent(
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    Text(
-                                        text = if (isDaylight) "☀️" else "🌙",
-                                        style = MaterialTheme.typography.titleLarge
+                                    SeleniaIconBadge(
+                                        icon = if (entry.isDaylight) {
+                                            Icons.Filled.WbSunny
+                                        } else {
+                                            Icons.Filled.NightsStay
+                                        },
+                                        tint = if (entry.isDaylight) {
+                                            Color(0xFFFFD54F)
+                                        } else {
+                                            Color(0xFF4DD0E1)
+                                        },
+                                        size = 36.dp,
+                                        iconSize = 18.dp,
+                                        isCircular = true
                                     )
                                     Column {
                                         Text(
-                                            text = citySpec.city,
+                                            text = entry.city,
                                             style = MaterialTheme.typography.titleSmall,
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
                                         Text(
-                                            text = citySpec.region,
+                                            text = entry.region,
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 }
                                 Text(
-                                    text = timeText,
+                                    text = entry.timeText,
                                     style = MaterialTheme.typography.headlineSmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isDaylight) {
+                                    color = if (entry.isDaylight) {
                                         MaterialTheme.colorScheme.primary
                                     } else {
                                         MaterialTheme.colorScheme.secondary
@@ -689,31 +766,35 @@ private fun AstronomicalAnalogClockCanvas(
             color = goldColor.copy(alpha = 0.72f),
             radius = radius * 0.95f,
             center = center,
-            style = Stroke(width = 3.2f)
+            style = OUTER_BEZEL_STROKE
         )
         drawCircle(
             color = cyanColor.copy(alpha = 0.32f),
             radius = radius * 0.86f,
             center = center,
-            style = Stroke(width = 1.4f)
+            style = INNER_BEZEL_STROKE
         )
 
-        // 60 minute / 12 hour ticks
+        // 60 minute / 12 hour ticks using precomputed cosine/sine LUT
+        val outerR = radius * 0.90f
+        val majorInnerR = radius * 0.78f
+        val minorInnerR = radius * 0.85f
+        val minorTickColor = markerColor.copy(alpha = 0.35f)
         for (i in 0 until 60) {
-            val angleRad = (i * 6.0 - 90.0) * (PI / 180.0)
+            val cosA = WATCH_TICK_COS[i]
+            val sinA = WATCH_TICK_SIN[i]
             val isMajorHour = i % 5 == 0
-            val outerR = radius * 0.90f
-            val innerR = if (isMajorHour) radius * 0.78f else radius * 0.85f
+            val innerR = if (isMajorHour) majorInnerR else minorInnerR
             val start = Offset(
-                x = center.x + (innerR * cos(angleRad)).toFloat(),
-                y = center.y + (innerR * sin(angleRad)).toFloat()
+                x = center.x + innerR * cosA,
+                y = center.y + innerR * sinA
             )
             val end = Offset(
-                x = center.x + (outerR * cos(angleRad)).toFloat(),
-                y = center.y + (outerR * sin(angleRad)).toFloat()
+                x = center.x + outerR * cosA,
+                y = center.y + outerR * sinA
             )
             drawLine(
-                color = if (isMajorHour) goldColor else markerColor.copy(alpha = 0.35f),
+                color = if (isMajorHour) goldColor else minorTickColor,
                 start = start,
                 end = end,
                 strokeWidth = if (isMajorHour) 3.5f else 1.5f,

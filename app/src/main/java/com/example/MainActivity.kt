@@ -56,7 +56,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.domain.ColorHarmonyEngine
 import com.example.ui.AppDestination
@@ -310,24 +313,6 @@ private fun SeleniaTopHeader(
     onHeaderMoonClick: () -> Unit,
     onHeaderClockClick: () -> Unit
 ) {
-    var liveTimeText by remember { mutableStateOf("") }
-    LaunchedEffect(uiState.is24HourFormat) {
-        while (true) {
-            val cal = Calendar.getInstance()
-            val h24 = cal.get(Calendar.HOUR_OF_DAY)
-            val m = cal.get(Calendar.MINUTE)
-            val s = cal.get(Calendar.SECOND)
-            liveTimeText = if (uiState.is24HourFormat) {
-                "%02d:%02d:%02d".format(Locale.US, h24, m, s)
-            } else {
-                val h12 = if (h24 % 12 == 0) 12 else h24 % 12
-                val amPm = if (h24 < 12) "AM" else "PM"
-                "%02d:%02d %s".format(Locale.US, h12, m, amPm)
-            }
-            delay(1000L)
-        }
-    }
-
     val moonSkin = uiState.skinFor(ModuleThemeTarget.MOON_OBSERVATORY)
     val litTint = if (moonSkin.isCustomApplied) {
         Color(moonSkin.primarySwatch.rgb.r, moonSkin.primarySwatch.rgb.g, moonSkin.primarySwatch.rgb.b)
@@ -346,38 +331,39 @@ private fun SeleniaTopHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.app_name),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                com.example.ui.components.SeleniaBrandEmblem(
+                    size = 38.dp,
+                    primaryColor = MaterialTheme.colorScheme.primary,
+                    secondaryColor = MaterialTheme.colorScheme.secondary
                 )
-                Text(
-                    text = stringResource(R.string.subtitle_observatory),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Column {
+                    Text(
+                        text = stringResource(R.string.app_name),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = stringResource(R.string.subtitle_observatory),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Surface(
-                    onClick = onHeaderClockClick,
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    shape = MaterialTheme.shapes.large,
-                    modifier = Modifier.testTag("header_live_clock_badge")
-                ) {
-                    Text(
-                        text = "⌚ $liveTimeText",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
-                    )
-                }
+                HeaderLiveClockBadge(
+                    is24HourFormat = uiState.is24HourFormat,
+                    onClick = onHeaderClockClick
+                )
 
                 Surface(
                     onClick = onHeaderMoonClick,
@@ -412,6 +398,70 @@ private fun SeleniaTopHeader(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Isolated composable for the 1Hz header clock badge:
+ * - Uses lifecycle-aware repeatOnLifecycle(STARTED) so 0% battery is used in background.
+ * - Aligns sleep duration to exact second boundary.
+ * - Isolates state reads so the 1Hz tick only recomposes this badge and never recomposes
+ *   the header's RealisticMoonCanvas or title.
+ */
+@Composable
+private fun HeaderLiveClockBadge(
+    is24HourFormat: Boolean,
+    onClick: () -> Unit
+) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val reusableCal = remember { Calendar.getInstance() }
+    var liveTimeText by remember { mutableStateOf("") }
+
+    LaunchedEffect(is24HourFormat, lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                val now = System.currentTimeMillis()
+                reusableCal.timeInMillis = now
+                val h24 = reusableCal.get(Calendar.HOUR_OF_DAY)
+                val m = reusableCal.get(Calendar.MINUTE)
+                val s = reusableCal.get(Calendar.SECOND)
+                liveTimeText = if (is24HourFormat) {
+                    "%02d:%02d:%02d".format(Locale.US, h24, m, s)
+                } else {
+                    val h12 = if (h24 % 12 == 0) 12 else h24 % 12
+                    val amPm = if (h24 < 12) "AM" else "PM"
+                    "%02d:%02d %s".format(Locale.US, h12, m, amPm)
+                }
+                val sleepMs = (1000L - (now % 1000L)).coerceIn(100L, 1000L)
+                delay(sleepMs)
+            }
+        }
+    }
+
+    Surface(
+        onClick = onClick,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.testTag("header_live_clock_badge")
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.AccessTime,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.size(15.dp)
+            )
+            Text(
+                text = liveTimeText,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.secondary
+            )
         }
     }
 }

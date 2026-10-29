@@ -5,6 +5,7 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- Deep Celestial Indigo-Cosmos Linear Gradient Base -->
     <path android:pathData="M0,0h108v108h-108z">
         <aapt:attr name="android:fillColor">
             <gradient
@@ -13,9 +14,37 @@
                 android:endX="108"
                 android:endY="108"
                 android:type="linear">
-                <item android:offset="0.0" android:color="#0B1026" />
-                <item android:offset="1.0" android:color="#1B2552" />
+                <item android:offset="0.0" android:color="#060A17" />
+                <item android:offset="0.52" android:color="#10193B" />
+                <item android:offset="1.0" android:color="#1E1B4B" />
             </gradient>
         </aapt:attr>
     </path>
+
+    <!-- Atmospheric Radial Nebula Glow -->
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:centerX="54"
+                android:centerY="48"
+                android:gradientRadius="52"
+                android:type="radial">
+                <item android:offset="0.0" android:color="#3864D2FF" />
+                <item android:offset="0.55" android:color="#188A5CF6" />
+                <item android:offset="1.0" android:color="#00060A17" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Subtle Astrolabe Ecliptic Grid Circles -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M54,54m-42,0a42,42 0,1 1,84 0a42,42 0,1 1,-84 0"
+        android:strokeWidth="0.6"
+        android:strokeColor="#26F5C451" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M54,54m-35,0a35,35 0,1 1,70 0a35,35 0,1 1,-70 0"
+        android:strokeWidth="0.5"
+        android:strokeColor="#2264D2FF" />
 </vector>

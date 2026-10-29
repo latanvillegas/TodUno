@@ -3,6 +3,7 @@ package com.example.ui.components
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -13,11 +14,22 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import kotlin.math.PI
 import kotlin.math.cos
-import kotlin.math.sin
 import kotlin.math.sqrt
 
+// Precomputed unit-circle chord lookup table: eliminates 122 sqrt() calls per Moon draw pass.
+private const val TERMINATOR_STEPS = 44
+private val UNIT_T = FloatArray(TERMINATOR_STEPS + 1) { i ->
+    -1f + (2f * i / TERMINATOR_STEPS.toFloat())
+}
+private val UNIT_HALF_CHORD = FloatArray(TERMINATOR_STEPS + 1) { i ->
+    val t = UNIT_T[i]
+    sqrt((1f - t * t).coerceAtLeast(0f))
+}
+private val COORDINATE_RING_STROKE = Stroke(width = 1.2f)
+
 /**
- * Renders a realistic astronomical Moon disk using Canvas.
+ * Renders a realistic astronomical Moon disk using Canvas with zero per-frame Path allocations
+ * and precomputed trigonometry/chord tables.
  * [phaseFraction] ranges from 0.0 (New Moon) -> 0.25 (First Quarter) -> 0.5 (Full Moon) -> 0.75 (Last Quarter) -> 1.0.
  * [isNorthernHemisphere] controls whether waxing illumination grows from the right (North) or left (South).
  */
@@ -31,6 +43,11 @@ fun RealisticMoonCanvas(
     litHighlightColor: Color = Color(0xFFFFF8E1),
     shadowColor: Color = Color(0xFF101733)
 ) {
+    // Reuse a single Path instance across draw passes to avoid GC churn when rendering 42+ calendar moons.
+    val reusableLitPath = remember { Path() }
+    val lighterShadowColor = remember(shadowColor) { shadowColor.lighter(0.08f) }
+    val rimColor = remember(litColor) { litColor.copy(alpha = 0.35f) }
+
     Canvas(modifier = modifier.fillMaxSize()) {
         val minDim = size.minDimension
         if (minDim <= 0f) return@Canvas
@@ -61,7 +78,7 @@ fun RealisticMoonCanvas(
                 color = Color(0xFFF5C451).copy(alpha = 0.22f),
                 radius = radius * 1.18f,
                 center = center,
-                style = Stroke(width = 1.2f)
+                style = COORDINATE_RING_STROKE
             )
         }
 
@@ -69,7 +86,7 @@ fun RealisticMoonCanvas(
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    shadowColor.lighter(0.08f),
+                    lighterShadowColor,
                     shadowColor
                 ),
                 center = Offset(center.x - radius * 0.2f, center.y - radius * 0.2f),
@@ -82,15 +99,16 @@ fun RealisticMoonCanvas(
         // Subtle maria on dark side (earthshine effect)
         drawLunarMaria(center, radius, alpha = 0.08f)
 
-        // 3. Illuminated spherical portion bounded by limb and elliptical terminator
-        val litPath = buildIlluminatedMoonPath(
+        // 3. Illuminated spherical portion bounded by limb and elliptical terminator (zero allocation)
+        populateIlluminatedMoonPath(
+            targetPath = reusableLitPath,
             center = center,
             radius = radius,
             phaseFraction = phaseFraction,
             isNorthernHemisphere = isNorthernHemisphere
         )
 
-        clipPath(litPath) {
+        clipPath(reusableLitPath) {
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
@@ -110,7 +128,7 @@ fun RealisticMoonCanvas(
 
         // 4. Outer subtle rim light
         drawCircle(
-            color = litColor.copy(alpha = 0.35f),
+            color = rimColor,
             radius = radius,
             center = center,
             style = Stroke(width = (minDim * 0.015f).coerceAtLeast(1f))
@@ -153,55 +171,44 @@ private fun DrawScope.drawLunarMaria(center: Offset, radius: Float, alpha: Float
     }
 }
 
-private fun buildIlluminatedMoonPath(
+private fun populateIlluminatedMoonPath(
+    targetPath: Path,
     center: Offset,
     radius: Float,
     phaseFraction: Double,
     isNorthernHemisphere: Boolean
-): Path {
-    val path = Path()
+) {
+    targetPath.reset()
     var p = phaseFraction % 1.0
     if (p < 0) p += 1.0
 
     // Flip waxing/waning left-right for Southern Hemisphere
     val effectiveWaxing = if (isNorthernHemisphere) (p <= 0.5) else (p > 0.5)
+    val limbSign = if (effectiveWaxing) 1f else -1f
     // Terminator x-scale: cos(2 * pi * p) ranges from +1 (New) -> 0 (Quarter) -> -1 (Full) -> 0 (Last Q) -> +1
-    val terminatorScale = cos(2.0 * PI * p).toFloat()
+    val terminatorScale = cos(2.0 * PI * p).toFloat() * limbSign
 
-    val steps = 60
-    // Sample from top pole (y = -radius) to bottom pole (y = +radius)
-    for (i in 0..steps) {
-        val t = -1f + (2f * i / steps.toFloat())
-        val y = center.y + t * radius
-        val halfChord = radius * sqrt((1f - t * t).coerceAtLeast(0f))
-        // Limb is on the right (+halfChord) when waxing in North, or left (-halfChord) when waning
-        val xLimb = if (effectiveWaxing) {
-            center.x + halfChord
-        } else {
-            center.x - halfChord
-        }
+    // Sample from top pole (y = -radius) to bottom pole (y = +radius) using precomputed LUT
+    for (i in 0..TERMINATOR_STEPS) {
+        val y = center.y + UNIT_T[i] * radius
+        val halfChord = radius * UNIT_HALF_CHORD[i]
+        val xLimb = center.x + halfChord * limbSign
         if (i == 0) {
-            path.moveTo(xLimb, y)
+            targetPath.moveTo(xLimb, y)
         } else {
-            path.lineTo(xLimb, y)
+            targetPath.lineTo(xLimb, y)
         }
     }
 
     // Return from bottom pole (y = +radius) to top pole (y = -radius) along the terminator curve
-    for (i in steps downTo 0) {
-        val t = -1f + (2f * i / steps.toFloat())
-        val y = center.y + t * radius
-        val halfChord = radius * sqrt((1f - t * t).coerceAtLeast(0f))
-        val xTerminator = if (effectiveWaxing) {
-            center.x + halfChord * terminatorScale
-        } else {
-            center.x - halfChord * terminatorScale
-        }
-        path.lineTo(xTerminator, y)
+    for (i in TERMINATOR_STEPS downTo 0) {
+        val y = center.y + UNIT_T[i] * radius
+        val halfChord = radius * UNIT_HALF_CHORD[i]
+        val xTerminator = center.x + halfChord * terminatorScale
+        targetPath.lineTo(xTerminator, y)
     }
 
-    path.close()
-    return path
+    targetPath.close()
 }
 
 private fun Color.lighter(factor: Float): Color {
@@ -212,3 +219,4 @@ private fun Color.lighter(factor: Float): Color {
         alpha = alpha
     )
 }
+

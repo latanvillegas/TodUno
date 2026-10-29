@@ -33,6 +33,11 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.NightlightRound
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Today
+import com.example.domain.LunarAlmanacCategory
+import com.example.ui.components.MoonPhaseBadgeIcon
+import com.example.ui.components.SeleniaIconBadge
+import com.example.ui.components.accentColor
+import com.example.ui.components.iconVector
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -50,6 +55,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -99,7 +105,15 @@ fun CalendarScreen(
         Color(0xFFF7E7B4)
     }
 
-    val selectedDayNotes = uiState.notesByDate[uiState.selectedDate.toStorageKey()].orEmpty()
+    val selectedDayNotes = remember(uiState.notesByDate, uiState.selectedDate) {
+        uiState.notesByDate[uiState.selectedDate.toStorageKey()].orEmpty()
+    }
+    val datesWithNotes = remember(uiState.notesByDate) {
+        uiState.notesByDate.filterValues { it.isNotEmpty() }.keys
+    }
+    val weeks = remember(uiState.calendarCells) {
+        uiState.calendarCells.chunked(7)
+    }
     val monthTitle = "${LunarAstronomer.SPANISH_MONTHS[(uiState.displayMonth - 1).coerceIn(0, 11)]} ${uiState.displayYear}"
 
     Box(
@@ -247,7 +261,6 @@ fun CalendarScreen(
                             Spacer(modifier = Modifier.height(8.dp))
 
                             // 6-week (42 cells) Calendar Grid with miniature realistic moons
-                            val weeks = uiState.calendarCells.chunked(7)
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 weeks.forEach { weekCells ->
                                     Row(
@@ -255,7 +268,7 @@ fun CalendarScreen(
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         weekCells.forEach { cell ->
-                                            val hasNotes = uiState.notesByDate[cell.date.toStorageKey()].orEmpty().isNotEmpty()
+                                            val hasNotes = cell.date.storageKey in datesWithNotes
                                             CalendarDayCellItem(
                                                 cell = cell,
                                                 isSelected = cell.date == uiState.selectedDate,
@@ -291,6 +304,8 @@ fun CalendarScreen(
                                 MilestoneChipCard(
                                     milestone = milestone,
                                     isSelected = milestone.date == uiState.selectedDate,
+                                    moonLitColor = customMoonLitColor,
+                                    isNorthernHemisphere = uiState.isNorthernHemisphere,
                                     onClick = { onSelectDate(milestone.date) }
                                 )
                             }
@@ -349,11 +364,22 @@ fun CalendarScreen(
                                         color = MaterialTheme.colorScheme.secondary
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = "${info.phaseType.emoji} ${info.phaseType.spanishName}",
-                                        style = MaterialTheme.typography.headlineSmall,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        com.example.ui.components.MoonPhaseBadgeIcon(
+                                            phaseType = info.phaseType,
+                                            size = 22.dp,
+                                            litColor = customMoonLitColor,
+                                            southernHemisphere = !uiState.isNorthernHemisphere
+                                        )
+                                        Text(
+                                            text = info.phaseType.spanishName,
+                                            style = MaterialTheme.typography.headlineSmall,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
                                         text = "Iluminación: ${"%.1f".format(info.illuminationPercent)}%  •  Edad: ${"%.1f".format(info.lunarAgeDays)} días",
@@ -375,18 +401,73 @@ fun CalendarScreen(
                             ) {
                                 Column(
                                     modifier = Modifier.padding(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Text(
-                                        text = "🌱 ${info.phaseType.gardeningTip}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = "🔭 ${info.phaseType.stargazingTip}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        SeleniaIconBadge(
+                                            icon = LunarAlmanacCategory.HAIR_CARE.iconVector(),
+                                            tint = LunarAlmanacCategory.HAIR_CARE.accentColor(),
+                                            size = 26.dp,
+                                            iconSize = 14.dp
+                                        )
+                                        Text(
+                                            text = "Cabello: ${info.phaseType.hairActionBadge}  •  Piel: ${info.phaseType.beautyActionBadge}",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    Row(
+                                        verticalAlignment = Alignment.Top,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        SeleniaIconBadge(
+                                            icon = LunarAlmanacCategory.BEAUTY_SKIN.iconVector(),
+                                            tint = LunarAlmanacCategory.BEAUTY_SKIN.accentColor(),
+                                            size = 24.dp,
+                                            iconSize = 13.dp
+                                        )
+                                        Text(
+                                            text = info.phaseType.beautySkinTip,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                    Row(
+                                        verticalAlignment = Alignment.Top,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        SeleniaIconBadge(
+                                            icon = LunarAlmanacCategory.GARDENING.iconVector(),
+                                            tint = LunarAlmanacCategory.GARDENING.accentColor(),
+                                            size = 24.dp,
+                                            iconSize = 13.dp
+                                        )
+                                        Text(
+                                            text = info.phaseType.gardeningTip,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Row(
+                                        verticalAlignment = Alignment.Top,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        SeleniaIconBadge(
+                                            icon = LunarAlmanacCategory.ASTRONOMY.iconVector(),
+                                            tint = LunarAlmanacCategory.ASTRONOMY.accentColor(),
+                                            size = 24.dp,
+                                            iconSize = 13.dp
+                                        )
+                                        Text(
+                                            text = info.phaseType.stargazingTip,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
                             }
 
@@ -634,6 +715,8 @@ private fun CalendarDayCellItem(
 private fun MilestoneChipCard(
     milestone: MajorPhaseMilestone,
     isSelected: Boolean,
+    moonLitColor: Color,
+    isNorthernHemisphere: Boolean,
     onClick: () -> Unit
 ) {
     Surface(
@@ -653,11 +736,13 @@ private fun MilestoneChipCard(
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(
-                text = milestone.phaseType.emoji,
-                style = MaterialTheme.typography.titleLarge
+            com.example.ui.components.MoonPhaseBadgeIcon(
+                phaseType = milestone.phaseType,
+                size = 28.dp,
+                litColor = moonLitColor,
+                southernHemisphere = !isNorthernHemisphere
             )
             Column {
                 Text(

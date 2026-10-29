@@ -1,5 +1,6 @@
 package com.example.domain
 
+import androidx.compose.runtime.Immutable
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
@@ -7,22 +8,24 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
+@Immutable
 data class RgbColor(
     val r: Int, // 0..255
     val g: Int, // 0..255
     val b: Int  // 0..255
 ) {
-    val hex: String
-        get() = "#%02X%02X%02X".format(
-            Locale.US,
-            r.coerceIn(0, 255),
-            g.coerceIn(0, 255),
-            b.coerceIn(0, 255)
-        )
+    // Precomputed once on instantiation to avoid repeated String.format allocations during UI rendering
+    val hex: String = "#%02X%02X%02X".format(
+        Locale.US,
+        r.coerceIn(0, 255),
+        g.coerceIn(0, 255),
+        b.coerceIn(0, 255)
+    )
 
     fun formatCss(): String = "rgb($r, $g, $b)"
 }
 
+@Immutable
 data class HslColor(
     val h: Float, // 0f..360f
     val s: Float, // 0f..100f
@@ -31,6 +34,7 @@ data class HslColor(
     fun formatCss(): String = "hsl(${h.roundToInt()}°, ${s.roundToInt()}%, ${l.roundToInt()}%)"
 }
 
+@Immutable
 data class CmykColor(
     val c: Int, // 0..100
     val m: Int, // 0..100
@@ -40,6 +44,7 @@ data class CmykColor(
     fun formatCss(): String = "cmyk($c%, $m%, $y%, $k%)"
 }
 
+@Immutable
 data class ColorSwatchSpec(
     val label: String,
     val rgb: RgbColor,
@@ -49,6 +54,7 @@ data class ColorSwatchSpec(
     val hex: String get() = rgb.hex
 }
 
+@Immutable
 data class ColorHarmonyGroup(
     val title: String,
     val description: String,
@@ -62,6 +68,7 @@ enum class GradientStyleType(val spanishTitle: String, val badge: String) {
     MESH("Degradado de Malla (Mesh)", "Malla")
 }
 
+@Immutable
 data class GradientPreset(
     val id: String,
     val name: String,
@@ -69,6 +76,7 @@ data class GradientPreset(
     val stops: List<ColorSwatchSpec>
 )
 
+@Immutable
 data class NamedColorFamily(
     val familyName: String,
     val colors: List<ColorSwatchSpec>

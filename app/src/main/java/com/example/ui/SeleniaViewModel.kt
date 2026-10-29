@@ -1,5 +1,6 @@
 package com.example.ui
 
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import com.example.domain.CalculationRecord
 import com.example.domain.CalendarDayCell
@@ -83,6 +84,7 @@ enum class ModuleThemeTarget(
     )
 }
 
+@Immutable
 data class ModuleVisualSkin(
     val target: ModuleThemeTarget,
     val primarySwatch: ColorSwatchSpec,
@@ -96,6 +98,7 @@ data class ModuleVisualSkin(
     val isCustomApplied: Boolean = false
 )
 
+@Immutable
 data class CalendarNote(
     val id: Long,
     val date: SimpleDate,
@@ -103,6 +106,7 @@ data class CalendarNote(
     val category: String
 )
 
+@Immutable
 data class SeleniaUiState(
     val currentDestination: AppDestination = AppDestination.CALENDAR,
     val today: SimpleDate = LunarAstronomer.today(),
@@ -155,28 +159,45 @@ data class SeleniaUiState(
         ColorHarmonyEngine.fromRgb(28, 39, 82)     // Índigo Astrolabio #1C2752
     )
 ) {
-    val computedTargetDate: SimpleDate
-        get() {
-            val totalOffset = if (useLunarCycleOffset) {
-                (dateOffsetLunarCycles * LunarAstronomer.SYNODIC_MONTH_DAYS).roundToInt()
-            } else {
-                dateOffsetDays
-            }
-            return LunarAstronomer.addDays(selectedDate, totalOffset)
+    val computedTargetDate: SimpleDate by lazy(LazyThreadSafetyMode.NONE) {
+        val totalOffset = if (useLunarCycleOffset) {
+            (dateOffsetLunarCycles * LunarAstronomer.SYNODIC_MONTH_DAYS).roundToInt()
+        } else {
+            dateOffsetDays
         }
+        LunarAstronomer.addDays(selectedDate, totalOffset)
+    }
 
-    val computedTargetLunarInfo: LunarDayInfo
-        get() = LunarAstronomer.getLunarInfo(computedTargetDate)
+    val computedTargetLunarInfo: LunarDayInfo by lazy(LazyThreadSafetyMode.NONE) {
+        LunarAstronomer.getLunarInfo(computedTargetDate)
+    }
 
-    val daysBetweenSelectedAndComparison: Int
-        get() = LunarAstronomer.daysBetween(selectedDate, comparisonEndDate)
+    val daysBetweenSelectedAndComparison: Int by lazy(LazyThreadSafetyMode.NONE) {
+        LunarAstronomer.daysBetween(selectedDate, comparisonEndDate)
+    }
 
     val synodicCyclesBetweenSelectedAndComparison: Double
         get() = daysBetweenSelectedAndComparison / LunarAstronomer.SYNODIC_MONTH_DAYS
 
-    val activeGradientStops: List<ColorSwatchSpec>
-        get() = customGradientPresetStops
+    val activeGradientStops: List<ColorSwatchSpec> by lazy(LazyThreadSafetyMode.NONE) {
+        customGradientPresetStops
             ?: ColorHarmonyEngine.buildDynamicGradientStops(activeColorSwatch, gradientVariantIndex)
+    }
+
+    private val colorStudioPreviewSkin: ModuleVisualSkin by lazy(LazyThreadSafetyMode.NONE) {
+        ModuleVisualSkin(
+            target = ModuleThemeTarget.ALL_MODULES,
+            primarySwatch = activeColorSwatch,
+            secondarySwatch = activeGradientStops.getOrElse(2) { activeColorSwatch },
+            gradientStops = activeGradientStops,
+            gradientStyle = gradientStyle,
+            gradientAngleDeg = gradientAngleDeg,
+            focalX = radialFocalX,
+            focalY = radialFocalY,
+            radiusFactor = radialRadiusFactor,
+            isCustomApplied = true
+        )
+    }
 
     fun skinFor(target: ModuleThemeTarget): ModuleVisualSkin {
         return moduleSkins[target] ?: defaultSkinForTarget(target)
@@ -188,44 +209,40 @@ data class SeleniaUiState(
             AppDestination.MOON_OBSERVATORY -> skinFor(ModuleThemeTarget.MOON_OBSERVATORY)
             AppDestination.CLOCK -> skinFor(ModuleThemeTarget.CLOCK)
             AppDestination.CALCULATOR -> skinFor(ModuleThemeTarget.CALCULATOR)
-            AppDestination.COLORS -> ModuleVisualSkin(
-                target = ModuleThemeTarget.ALL_MODULES,
-                primarySwatch = activeColorSwatch,
-                secondarySwatch = activeGradientStops.getOrElse(2) { activeColorSwatch },
-                gradientStops = activeGradientStops,
-                gradientStyle = gradientStyle,
-                gradientAngleDeg = gradientAngleDeg,
-                focalX = radialFocalX,
-                focalY = radialFocalY,
-                radiusFactor = radialRadiusFactor,
-                isCustomApplied = true
-            )
+            AppDestination.COLORS -> colorStudioPreviewSkin
         }
     }
 
     companion object {
+        private val DEFAULT_PRIMARY = ColorHarmonyEngine.fromRgb(245, 196, 81)
+        private val DEFAULT_SECONDARY = ColorHarmonyEngine.fromRgb(100, 210, 255)
+        private val DEFAULT_STOPS = ColorHarmonyEngine.buildDynamicGradientStops(DEFAULT_PRIMARY, 0)
+        private val DEFAULT_SKINS_BY_TARGET: Map<ModuleThemeTarget, ModuleVisualSkin> =
+            ModuleThemeTarget.entries.associateWith { target ->
+                ModuleVisualSkin(
+                    target = target,
+                    primarySwatch = DEFAULT_PRIMARY,
+                    secondarySwatch = DEFAULT_SECONDARY,
+                    gradientStops = DEFAULT_STOPS,
+                    gradientStyle = GradientStyleType.MESH,
+                    gradientAngleDeg = 135,
+                    isCustomApplied = false
+                )
+            }
+
+        private val DEFAULT_MODULE_SKINS: Map<ModuleThemeTarget, ModuleVisualSkin> = listOf(
+            ModuleThemeTarget.CALENDAR,
+            ModuleThemeTarget.MOON_OBSERVATORY,
+            ModuleThemeTarget.CLOCK,
+            ModuleThemeTarget.CALCULATOR
+        ).associateWith { DEFAULT_SKINS_BY_TARGET.getValue(it) }
+
         fun defaultSkinForTarget(target: ModuleThemeTarget): ModuleVisualSkin {
-            val defaultPrimary = ColorHarmonyEngine.fromRgb(245, 196, 81)
-            val defaultSecondary = ColorHarmonyEngine.fromRgb(100, 210, 255)
-            val stops = ColorHarmonyEngine.buildDynamicGradientStops(defaultPrimary, 0)
-            return ModuleVisualSkin(
-                target = target,
-                primarySwatch = defaultPrimary,
-                secondarySwatch = defaultSecondary,
-                gradientStops = stops,
-                gradientStyle = GradientStyleType.MESH,
-                gradientAngleDeg = 135,
-                isCustomApplied = false
-            )
+            return DEFAULT_SKINS_BY_TARGET.getValue(target)
         }
 
         fun defaultModuleSkins(): Map<ModuleThemeTarget, ModuleVisualSkin> {
-            return listOf(
-                ModuleThemeTarget.CALENDAR,
-                ModuleThemeTarget.MOON_OBSERVATORY,
-                ModuleThemeTarget.CLOCK,
-                ModuleThemeTarget.CALCULATOR
-            ).associateWith { defaultSkinForTarget(it) }
+            return DEFAULT_MODULE_SKINS
         }
     }
 }
