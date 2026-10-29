@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.HourglassBottom
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -37,6 +38,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -66,7 +68,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.ui.ClockSubTab
+import com.example.ui.ModuleThemeTarget
+import com.example.ui.ModuleVisualSkin
 import com.example.ui.SeleniaUiState
+import com.example.ui.components.ModuleSkinBox
 import com.example.ui.components.RealisticMoonCanvas
 import kotlinx.coroutines.delay
 import java.util.Calendar
@@ -103,9 +108,11 @@ fun ClockScreen(
     uiState: SeleniaUiState,
     onSelectSubTab: (ClockSubTab) -> Unit,
     onToggle24HourFormat: () -> Unit,
+    onOpenColorCustomizer: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    // Real-time ticker updating every 100ms for smooth watch & astronomical time
+    val skin = uiState.skinFor(ModuleThemeTarget.CLOCK)
+
     var currentMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -130,7 +137,7 @@ fun ClockScreen(
     }
 
     // Timer state
-    var timerTotalSeconds by rememberSaveable { mutableIntStateOf(300) } // 5 min default
+    var timerTotalSeconds by rememberSaveable { mutableIntStateOf(300) }
     var timerRemainingMs by rememberSaveable { mutableLongStateOf(300_000L) }
     var timerRunning by rememberSaveable { mutableStateOf(false) }
     var timerEndTargetMs by rememberSaveable { mutableLongStateOf(0L) }
@@ -162,7 +169,8 @@ fun ClockScreen(
             // Sub-tab selector: Reloj y Husos | Cronómetro | Temporizador
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 FilterChip(
                     selected = uiState.clockSubTab == ClockSubTab.WORLD_CLOCK,
@@ -218,13 +226,16 @@ fun ClockScreen(
                     moonPhaseFraction = uiState.selectedDayLunarInfo.phaseFraction,
                     moonPhaseName = uiState.selectedDayLunarInfo.phaseType.spanishName,
                     isNorthernHemisphere = uiState.isNorthernHemisphere,
-                    onToggle24Hour = onToggle24HourFormat
+                    skin = skin,
+                    onToggle24Hour = onToggle24HourFormat,
+                    onOpenColorCustomizer = onOpenColorCustomizer
                 )
 
                 ClockSubTab.STOPWATCH -> StopwatchContent(
                     elapsedMs = stopwatchDisplayMs,
                     isRunning = stopwatchRunning,
                     laps = stopwatchLaps,
+                    skin = skin,
                     onToggleStartPause = {
                         if (stopwatchRunning) {
                             stopwatchAccumulatedMs += (System.currentTimeMillis() - stopwatchLastStartMs)
@@ -260,6 +271,7 @@ fun ClockScreen(
                     remainingMs = timerRemainingMs,
                     isRunning = timerRunning,
                     isFinishedAlert = timerFinishedAlert,
+                    skin = skin,
                     onSelectPresetSeconds = { seconds ->
                         timerRunning = false
                         timerFinishedAlert = false
@@ -307,7 +319,9 @@ private fun AstronomicalAndWorldClockContent(
     moonPhaseFraction: Double,
     moonPhaseName: String,
     isNorthernHemisphere: Boolean,
-    onToggle24Hour: () -> Unit
+    skin: ModuleVisualSkin,
+    onToggle24Hour: () -> Unit,
+    onOpenColorCustomizer: () -> Unit
 ) {
     val localCal = remember(currentMillis) {
         Calendar.getInstance().apply { timeInMillis = currentMillis }
@@ -336,7 +350,6 @@ private fun AstronomicalAndWorldClockContent(
         utcCal.get(Calendar.SECOND)
     )
 
-    // Approximate Greenwich Mean Sidereal Time (GMST) for astronomical observatory feel
     val jd = (currentMillis / 86400000.0) + 2440587.5
     val d = jd - 2451545.0
     var gmstHours = (18.697374558 + 24.06570982441908 * d) % 24.0
@@ -346,6 +359,12 @@ private fun AstronomicalAndWorldClockContent(
     val gmstS = ((((gmstHours - gmstH) * 60.0) - gmstM) * 60.0).toInt()
     val gmstString = "%02dh %02dm %02ds".format(Locale.US, gmstH, gmstM, gmstS)
 
+    val watchLitColor = if (skin.isCustomApplied) {
+        Color(skin.primarySwatch.rgb.r, skin.primarySwatch.rgb.g, skin.primarySwatch.rgb.b)
+    } else {
+        Color(0xFFF7E7B4)
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -353,162 +372,188 @@ private fun AstronomicalAndWorldClockContent(
         verticalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = PaddingValues(bottom = 20.dp)
     ) {
-        // 1. Hero Moonphase Astronomical Watch Card
+        // 1. Hero Moonphase Astronomical Watch Card with custom Clock Skin
         item {
             Card(
                 shape = MaterialTheme.shapes.extraLarge,
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(
-                                    MaterialTheme.colorScheme.background,
-                                    MaterialTheme.colorScheme.surface,
-                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
-                                )
-                            )
-                        )
-                        .padding(20.dp)
+                ModuleSkinBox(
+                    skin = skin,
+                    alphaIntensity = 0.42f,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Reloj Astronómico con Fase Lunar",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.secondary
-                        )
-                        AssistChip(
-                            onClick = onToggle24Hour,
-                            label = {
-                                Text(
-                                    if (is24Hour) {
-                                        stringResource(R.string.clock_format_24h)
-                                    } else {
-                                        stringResource(R.string.clock_format_12h)
-                                    }
-                                )
-                            },
-                            modifier = Modifier.testTag("toggle_clock_format_chip")
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Analog Astrolabe Watch Face with embedded Moonphase sub-dial
-                    Box(
-                        contentAlignment = Alignment.Center,
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
-                            .size(230.dp)
-                            .testTag("analog_astronomical_clock")
-                    ) {
-                        AstronomicalAnalogClockCanvas(
-                            hour = hour24,
-                            minute = minute,
-                            second = second,
-                            millis = millis
-                        )
-
-                        // Sub-dial complication showing live Moon Phase inside lower half of watch face
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(top = 74.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.background)
-                                    .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), CircleShape)
-                                    .padding(2.dp)
-                            ) {
-                                RealisticMoonCanvas(
-                                    phaseFraction = moonPhaseFraction,
-                                    isNorthernHemisphere = isNorthernHemisphere,
-                                    showAmbientGlow = false
-                                )
-                            }
-                            Text(
-                                text = moonPhaseName,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
+                            .fillMaxWidth()
+                            .background(
+                                if (!skin.isCustomApplied) {
+                                    Brush.verticalGradient(
+                                        listOf(
+                                            MaterialTheme.colorScheme.background,
+                                            MaterialTheme.colorScheme.surface,
+                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+                                        )
+                                    )
+                                } else {
+                                    Brush.verticalGradient(
+                                        listOf(Color.Transparent, Color.Transparent)
+                                    )
+                                }
                             )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Large Digital Readout
-                    Text(
-                        text = formattedDigitalTime,
-                        style = MaterialTheme.typography.displayMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.testTag("digital_clock_display")
-                    )
-
-                    Text(
-                        text = "Zona local: ${TimeZone.getDefault().id}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // UTC & Sidereal Time Pills
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            .padding(20.dp)
                     ) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            shape = MaterialTheme.shapes.medium,
-                            modifier = Modifier.weight(1f)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.padding(10.dp)
+                            Text(
+                                text = "Reloj Astronómico con Fase Lunar",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Text(
-                                    text = "Tiempo Universal",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = utcFormatted,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.secondary
+                                IconButton(
+                                    onClick = onOpenColorCustomizer,
+                                    modifier = Modifier.testTag("clock_customize_color_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Palette,
+                                        contentDescription = "Personalizar color del Reloj",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                AssistChip(
+                                    onClick = onToggle24Hour,
+                                    label = {
+                                        Text(
+                                            if (is24Hour) {
+                                                stringResource(R.string.clock_format_24h)
+                                            } else {
+                                                stringResource(R.string.clock_format_12h)
+                                            }
+                                        )
+                                    },
+                                    modifier = Modifier.testTag("toggle_clock_format_chip")
                                 )
                             }
                         }
 
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            shape = MaterialTheme.shapes.medium,
-                            modifier = Modifier.weight(1f)
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Analog Astrolabe Watch Face with custom Dial Gradient & Hands
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(230.dp)
+                                .testTag("analog_astronomical_clock")
                         ) {
+                            AstronomicalAnalogClockCanvas(
+                                hour = hour24,
+                                minute = minute,
+                                second = second,
+                                millis = millis,
+                                skin = skin
+                            )
+
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.padding(10.dp)
+                                modifier = Modifier.padding(top = 74.dp)
                             ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.background)
+                                        .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), CircleShape)
+                                        .padding(2.dp)
+                                ) {
+                                    RealisticMoonCanvas(
+                                        phaseFraction = moonPhaseFraction,
+                                        isNorthernHemisphere = isNorthernHemisphere,
+                                        showAmbientGlow = false,
+                                        litColor = watchLitColor
+                                    )
+                                }
                                 Text(
-                                    text = "Tiempo Sideral (GMST)",
+                                    text = moonPhaseName,
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = gmstString,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
                                 )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Text(
+                            text = formattedDigitalTime,
+                            style = MaterialTheme.typography.displayMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.testTag("digital_clock_display")
+                        )
+
+                        Text(
+                            text = "Zona local: ${TimeZone.getDefault().id}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f),
+                                shape = MaterialTheme.shapes.medium,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.padding(10.dp)
+                                ) {
+                                    Text(
+                                        text = "Tiempo Universal",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = utcFormatted,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.secondary
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f),
+                                shape = MaterialTheme.shapes.medium,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.padding(10.dp)
+                                ) {
+                                    Text(
+                                        text = "Tiempo Sideral (GMST)",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = gmstString,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
                         }
                     }
@@ -606,22 +651,30 @@ private fun AstronomicalAnalogClockCanvas(
     hour: Int,
     minute: Int,
     second: Int,
-    millis: Int
+    millis: Int,
+    skin: ModuleVisualSkin
 ) {
     val goldColor = MaterialTheme.colorScheme.primary
     val cyanColor = MaterialTheme.colorScheme.secondary
     val surfaceColor = MaterialTheme.colorScheme.background
     val markerColor = MaterialTheme.colorScheme.onSurface
 
+    val dialCenterColor = if (skin.isCustomApplied) {
+        val p = skin.primarySwatch.rgb
+        Color(p.r, p.g, p.b).copy(alpha = 0.35f)
+    } else {
+        Color(0xFF1A2550)
+    }
+
     Canvas(modifier = Modifier.fillMaxSize()) {
         val radius = size.minDimension / 2f
         val center = Offset(size.width / 2f, size.height / 2f)
 
-        // Dial background
+        // Dial background with custom skin tint
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    Color(0xFF1A2550),
+                    dialCenterColor,
                     surfaceColor
                 ),
                 center = center,
@@ -633,16 +686,16 @@ private fun AstronomicalAnalogClockCanvas(
 
         // Outer bezel rings
         drawCircle(
-            color = goldColor.copy(alpha = 0.65f),
+            color = goldColor.copy(alpha = 0.72f),
             radius = radius * 0.95f,
             center = center,
-            style = Stroke(width = 3f)
+            style = Stroke(width = 3.2f)
         )
         drawCircle(
-            color = cyanColor.copy(alpha = 0.25f),
+            color = cyanColor.copy(alpha = 0.32f),
             radius = radius * 0.86f,
             center = center,
-            style = Stroke(width = 1.2f)
+            style = Stroke(width = 1.4f)
         )
 
         // 60 minute / 12 hour ticks
@@ -698,7 +751,7 @@ private fun AstronomicalAnalogClockCanvas(
             cap = StrokeCap.Round
         )
 
-        // Second hand (celestial cyan)
+        // Second hand
         val secAngle = (smoothSecond * 6.0 - 90.0) * (PI / 180.0)
         drawLine(
             color = cyanColor,
@@ -714,7 +767,6 @@ private fun AstronomicalAnalogClockCanvas(
             cap = StrokeCap.Round
         )
 
-        // Center pivot jewel
         drawCircle(
             color = goldColor,
             radius = 6.5f,
@@ -733,6 +785,7 @@ private fun StopwatchContent(
     elapsedMs: Long,
     isRunning: Boolean,
     laps: List<StopwatchLap>,
+    skin: ModuleVisualSkin,
     onToggleStartPause: () -> Unit,
     onLap: () -> Unit,
     onReset: () -> Unit
@@ -750,73 +803,79 @@ private fun StopwatchContent(
                 shape = MaterialTheme.shapes.extraLarge,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(18.dp)
+                ModuleSkinBox(
+                    skin = skin,
+                    alphaIntensity = 0.38f,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = stringResource(R.string.clock_tab_stopwatch),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.secondary
-                    )
-
-                    Text(
-                        text = formatStopwatchMs(elapsedMs),
-                        style = MaterialTheme.typography.displayLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.testTag("stopwatch_time_display")
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        verticalArrangement = Arrangement.spacedBy(18.dp)
                     ) {
-                        Button(
-                            onClick = onToggleStartPause,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isRunning) {
-                                    MaterialTheme.colorScheme.secondary
-                                } else {
-                                    MaterialTheme.colorScheme.primary
-                                }
-                            ),
-                            modifier = Modifier.testTag("stopwatch_start_pause_button")
-                        ) {
-                            Icon(
-                                imageVector = if (isRunning) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = null
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                if (isRunning) {
-                                    stringResource(R.string.stopwatch_pause)
-                                } else {
-                                    stringResource(R.string.stopwatch_start)
-                                }
-                            )
-                        }
+                        Text(
+                            text = stringResource(R.string.clock_tab_stopwatch),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
 
-                        FilledTonalButton(
-                            onClick = onLap,
-                            enabled = elapsedMs > 0L,
-                            modifier = Modifier.testTag("stopwatch_lap_button")
-                        ) {
-                            Icon(imageVector = Icons.Default.Flag, contentDescription = null)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(stringResource(R.string.stopwatch_lap))
-                        }
+                        Text(
+                            text = formatStopwatchMs(elapsedMs),
+                            style = MaterialTheme.typography.displayLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.testTag("stopwatch_time_display")
+                        )
 
-                        FilledTonalButton(
-                            onClick = onReset,
-                            enabled = elapsedMs > 0L,
-                            modifier = Modifier.testTag("stopwatch_reset_button")
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)
                         ) {
-                            Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(stringResource(R.string.stopwatch_reset))
+                            Button(
+                                onClick = onToggleStartPause,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isRunning) {
+                                        MaterialTheme.colorScheme.secondary
+                                    } else {
+                                        MaterialTheme.colorScheme.primary
+                                    }
+                                ),
+                                modifier = Modifier.testTag("stopwatch_start_pause_button")
+                            ) {
+                                Icon(
+                                    imageVector = if (isRunning) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                    contentDescription = null
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    if (isRunning) {
+                                        stringResource(R.string.stopwatch_pause)
+                                    } else {
+                                        stringResource(R.string.stopwatch_start)
+                                    }
+                                )
+                            }
+
+                            FilledTonalButton(
+                                onClick = onLap,
+                                enabled = elapsedMs > 0L,
+                                modifier = Modifier.testTag("stopwatch_lap_button")
+                            ) {
+                                Icon(imageVector = Icons.Default.Flag, contentDescription = null)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(stringResource(R.string.stopwatch_lap))
+                            }
+
+                            FilledTonalButton(
+                                onClick = onReset,
+                                enabled = elapsedMs > 0L,
+                                modifier = Modifier.testTag("stopwatch_reset_button")
+                            ) {
+                                Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(stringResource(R.string.stopwatch_reset))
+                            }
                         }
                     }
                 }
@@ -887,6 +946,7 @@ private fun TimerContent(
     remainingMs: Long,
     isRunning: Boolean,
     isFinishedAlert: Boolean,
+    skin: ModuleVisualSkin,
     onSelectPresetSeconds: (Int) -> Unit,
     onAdjustSeconds: (Int) -> Unit,
     onToggleStartPause: () -> Unit,
@@ -908,136 +968,138 @@ private fun TimerContent(
                 shape = MaterialTheme.shapes.extraLarge,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ModuleSkinBox(
+                    skin = skin,
+                    alphaIntensity = 0.38f,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    // Circular countdown ring
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier.size(200.dp)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        val primaryColor = MaterialTheme.colorScheme.primary
-                        val trackColor = MaterialTheme.colorScheme.surfaceVariant
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            val strokeW = 10.dp.toPx()
-                            val arcSize = Size(size.width - strokeW, size.height - strokeW)
-                            val topLeft = Offset(strokeW / 2f, strokeW / 2f)
-                            drawArc(
-                                color = trackColor,
-                                startAngle = 0f,
-                                sweepAngle = 360f,
-                                useCenter = false,
-                                topLeft = topLeft,
-                                size = arcSize,
-                                style = Stroke(width = strokeW, cap = StrokeCap.Round)
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.size(200.dp)
+                        ) {
+                            val primaryColor = MaterialTheme.colorScheme.primary
+                            val trackColor = MaterialTheme.colorScheme.surfaceVariant
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                val strokeW = 10.dp.toPx()
+                                val arcSize = Size(size.width - strokeW, size.height - strokeW)
+                                val topLeft = Offset(strokeW / 2f, strokeW / 2f)
+                                drawArc(
+                                    color = trackColor,
+                                    startAngle = 0f,
+                                    sweepAngle = 360f,
+                                    useCenter = false,
+                                    topLeft = topLeft,
+                                    size = arcSize,
+                                    style = Stroke(width = strokeW, cap = StrokeCap.Round)
+                                )
+                                drawArc(
+                                    color = primaryColor,
+                                    startAngle = -90f,
+                                    sweepAngle = 360f * progress,
+                                    useCenter = false,
+                                    topLeft = topLeft,
+                                    size = arcSize,
+                                    style = Stroke(width = strokeW, cap = StrokeCap.Round)
+                                )
+                            }
+
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                val totSecLeft = ((remainingMs + 999L) / 1000L).toInt()
+                                val mins = totSecLeft / 60
+                                val secs = totSecLeft % 60
+                                Text(
+                                    text = "%02d:%02d".format(Locale.US, mins, secs),
+                                    style = MaterialTheme.typography.displayMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.testTag("timer_countdown_display")
+                                )
+                                if (isFinishedAlert) {
+                                    Text(
+                                        text = stringResource(R.string.timer_finished_message),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.error,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                        }
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            AssistChip(
+                                onClick = { onAdjustSeconds(-60) },
+                                label = { Text("-1 min") }
                             )
-                            drawArc(
-                                color = primaryColor,
-                                startAngle = -90f,
-                                sweepAngle = 360f * progress,
-                                useCenter = false,
-                                topLeft = topLeft,
-                                size = arcSize,
-                                style = Stroke(width = strokeW, cap = StrokeCap.Round)
+                            AssistChip(
+                                onClick = { onAdjustSeconds(30) },
+                                label = { Text("+30 seg") }
+                            )
+                            AssistChip(
+                                onClick = { onAdjustSeconds(60) },
+                                label = { Text("+1 min") }
                             )
                         }
 
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            val totSecLeft = ((remainingMs + 999L) / 1000L).toInt()
-                            val mins = totSecLeft / 60
-                            val secs = totSecLeft % 60
-                            Text(
-                                text = "%02d:%02d".format(Locale.US, mins, secs),
-                                style = MaterialTheme.typography.displayMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.testTag("timer_countdown_display")
-                            )
-                            if (isFinishedAlert) {
-                                Text(
-                                    text = stringResource(R.string.timer_finished_message),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.error,
-                                    textAlign = TextAlign.Center
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            listOf(
+                                60 to "1 min",
+                                180 to "3 min",
+                                300 to "5 min",
+                                600 to "10 min",
+                                900 to "15 min",
+                                1772 to "29.5m (Ciclo)"
+                            ).forEach { (sec, label) ->
+                                FilterChip(
+                                    selected = totalSeconds == sec,
+                                    onClick = { onSelectPresetSeconds(sec) },
+                                    label = { Text(label) }
                                 )
                             }
                         }
-                    }
 
-                    // Quick adjustment chips (-1m, +30s, +1m)
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        AssistChip(
-                            onClick = { onAdjustSeconds(-60) },
-                            label = { Text("-1 min") }
-                        )
-                        AssistChip(
-                            onClick = { onAdjustSeconds(30) },
-                            label = { Text("+30 seg") }
-                        )
-                        AssistChip(
-                            onClick = { onAdjustSeconds(60) },
-                            label = { Text("+1 min") }
-                        )
-                    }
-
-                    // Presets
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        listOf(
-                            60 to "1 min",
-                            180 to "3 min",
-                            300 to "5 min",
-                            600 to "10 min",
-                            900 to "15 min",
-                            1772 to "29.5m (Ciclo)"
-                        ).forEach { (sec, label) ->
-                            FilterChip(
-                                selected = totalSeconds == sec,
-                                onClick = { onSelectPresetSeconds(sec) },
-                                label = { Text(label) }
-                            )
-                        }
-                    }
-
-                    // Start / Pause / Reset buttons
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Button(
-                            onClick = onToggleStartPause,
-                            modifier = Modifier.testTag("timer_start_pause_button")
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = if (isRunning) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = null
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                if (isRunning) {
-                                    stringResource(R.string.stopwatch_pause)
-                                } else {
-                                    stringResource(R.string.stopwatch_start)
-                                }
-                            )
-                        }
+                            Button(
+                                onClick = onToggleStartPause,
+                                modifier = Modifier.testTag("timer_start_pause_button")
+                            ) {
+                                Icon(
+                                    imageVector = if (isRunning) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                    contentDescription = null
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    if (isRunning) {
+                                        stringResource(R.string.stopwatch_pause)
+                                    } else {
+                                        stringResource(R.string.stopwatch_start)
+                                    }
+                                )
+                            }
 
-                        FilledTonalButton(
-                            onClick = onReset,
-                            modifier = Modifier.testTag("timer_reset_button")
-                        ) {
-                            Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(stringResource(R.string.stopwatch_reset))
+                            FilledTonalButton(
+                                onClick = onReset,
+                                modifier = Modifier.testTag("timer_reset_button")
+                            ) {
+                                Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(stringResource(R.string.stopwatch_reset))
+                            }
                         }
                     }
                 }

@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,6 +25,7 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -33,6 +33,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -53,7 +54,10 @@ import com.example.R
 import com.example.domain.CalculationRecord
 import com.example.domain.SimpleDate
 import com.example.ui.CalculatorMode
+import com.example.ui.ModuleThemeTarget
+import com.example.ui.ModuleVisualSkin
 import com.example.ui.SeleniaUiState
+import com.example.ui.components.ModuleSkinBox
 import com.example.ui.components.RealisticMoonCanvas
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -75,8 +79,11 @@ fun CalculatorScreen(
     onUpdateOffsetLunarCycles: (Double) -> Unit,
     onStepComparisonDate: (Int) -> Unit,
     onJumpToDateInCalendar: (SimpleDate) -> Unit,
+    onOpenColorCustomizer: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val skin = uiState.skinFor(ModuleThemeTarget.CALCULATOR)
+
     Box(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter
@@ -88,10 +95,11 @@ fun CalculatorScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Mode Switcher: Científica vs Fechas y Ciclos Lunares
+            // Mode Switcher: Científica vs Fechas y Ciclos Lunares + Customizer Icon
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 FilterChip(
                     selected = uiState.calculatorMode == CalculatorMode.SCIENTIFIC,
@@ -123,11 +131,22 @@ fun CalculatorScreen(
                         .weight(1f)
                         .testTag("calc_mode_dates_tab")
                 )
+                IconButton(
+                    onClick = onOpenColorCustomizer,
+                    modifier = Modifier.testTag("calculator_customize_color_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Palette,
+                        contentDescription = "Personalizar color de la Calculadora",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
 
             if (uiState.calculatorMode == CalculatorMode.SCIENTIFIC) {
                 ScientificCalculatorContent(
                     uiState = uiState,
+                    skin = skin,
                     onInputToken = onInputToken,
                     onClear = onClear,
                     onBackspace = onBackspace,
@@ -140,6 +159,7 @@ fun CalculatorScreen(
             } else {
                 DateAndLunarCalculatorContent(
                     uiState = uiState,
+                    skin = skin,
                     onSetUseLunarCycleOffset = onSetUseLunarCycleOffset,
                     onUpdateOffsetDays = onUpdateOffsetDays,
                     onUpdateOffsetLunarCycles = onUpdateOffsetLunarCycles,
@@ -154,6 +174,7 @@ fun CalculatorScreen(
 @Composable
 private fun ScientificCalculatorContent(
     uiState: SeleniaUiState,
+    skin: ModuleVisualSkin,
     onInputToken: (String) -> Unit,
     onClear: () -> Unit,
     onBackspace: () -> Unit,
@@ -168,7 +189,7 @@ private fun ScientificCalculatorContent(
         verticalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(bottom = 16.dp)
     ) {
-        // 1. Expression & Result Display Screen
+        // 1. Expression & Result Display Screen with Custom Calculator Gradient Skin
         item {
             Card(
                 colors = CardDefaults.cardColors(
@@ -178,40 +199,58 @@ private fun ScientificCalculatorContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .border(
-                        width = 1.dp,
-                        color = MaterialTheme.colorScheme.outline,
+                        width = 1.5.dp,
+                        color = if (skin.isCustomApplied) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.outline
+                        },
                         shape = MaterialTheme.shapes.large
                     )
             ) {
-                Column(
-                    horizontalAlignment = Alignment.End,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 18.dp, vertical = 14.dp)
+                ModuleSkinBox(
+                    skin = skin,
+                    alphaIntensity = 0.46f,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = uiState.expression.ifEmpty { "0" },
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.End,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
+                    Column(
+                        horizontalAlignment = Alignment.End,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .testTag("calc_expression_display")
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "= ${uiState.liveResultPreview}",
-                        style = MaterialTheme.typography.displaySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        textAlign = TextAlign.End,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("calc_result_display")
-                    )
+                            .padding(horizontal = 18.dp, vertical = 14.dp)
+                    ) {
+                        if (skin.isCustomApplied) {
+                            Text(
+                                text = "Tema Calculadora: ${skin.primarySwatch.label} (${skin.gradientStyle.badge})",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.align(Alignment.Start)
+                            )
+                        }
+                        Text(
+                            text = uiState.expression.ifEmpty { "0" },
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.End,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("calc_expression_display")
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "= ${uiState.liveResultPreview}",
+                            style = MaterialTheme.typography.displaySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            textAlign = TextAlign.End,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("calc_result_display")
+                        )
+                    }
                 }
             }
         }
@@ -243,7 +282,6 @@ private fun ScientificCalculatorContent(
         // 3. Scientific & Standard Keypad
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                // Scientific row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -286,7 +324,6 @@ private fun ScientificCalculatorContent(
                     }
                 }
 
-                // Main numeric & operator rows
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -513,6 +550,7 @@ private fun CalcKeyButton(
 @Composable
 private fun DateAndLunarCalculatorContent(
     uiState: SeleniaUiState,
+    skin: ModuleVisualSkin,
     onSetUseLunarCycleOffset: (Boolean) -> Unit,
     onUpdateOffsetDays: (Int) -> Unit,
     onUpdateOffsetLunarCycles: (Double) -> Unit,
@@ -529,156 +567,160 @@ private fun DateAndLunarCalculatorContent(
         verticalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = PaddingValues(bottom = 20.dp)
     ) {
-        // 1. Add/Subtract Days or Synodic Cycles from Selected Calendar Date
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = MaterialTheme.shapes.large,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ModuleSkinBox(
+                    skin = skin,
+                    alphaIntensity = 0.36f,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = stringResource(R.string.date_calc_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-
-                    Text(
-                        text = "Fecha base: ${uiState.selectedDate.formatSpanishLong().replaceFirstChar { it.uppercase() }} (${uiState.selectedDayLunarInfo.phaseType.emoji} ${uiState.selectedDayLunarInfo.phaseType.spanishName})",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = !uiState.useLunarCycleOffset,
-                            onClick = { onSetUseLunarCycleOffset(false) },
-                            label = { Text("Por Días") },
-                            modifier = Modifier.testTag("offset_by_days_chip")
-                        )
-                        FilterChip(
-                            selected = uiState.useLunarCycleOffset,
-                            onClick = { onSetUseLunarCycleOffset(true) },
-                            label = { Text("Por Ciclos Lunares (29.53d)") },
-                            modifier = Modifier.testTag("offset_by_cycles_chip")
-                        )
-                    }
-
-                    if (!uiState.useLunarCycleOffset) {
-                        Text(
-                            text = "Desplazamiento: ${if (uiState.dateOffsetDays >= 0) "+${uiState.dateOffsetDays}" else "${uiState.dateOffsetDays}"} días",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Slider(
-                            value = uiState.dateOffsetDays.toFloat(),
-                            onValueChange = { onUpdateOffsetDays(it.roundToInt()) },
-                            valueRange = -180f..180f,
-                            modifier = Modifier.testTag("date_offset_days_slider")
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            listOf(-30, -7, 7, 14, 29, 90).forEach { preset ->
-                                AssistChip(
-                                    onClick = { onUpdateOffsetDays(preset) },
-                                    label = { Text(if (preset > 0) "+${preset}d" else "${preset}d") }
-                                )
-                            }
-                        }
-                    } else {
-                        Text(
-                            text = "Ciclos sinódicos: ${"%.1f".format(uiState.dateOffsetLunarCycles)} lunas (${(uiState.dateOffsetLunarCycles * 29.5306).roundToInt()} días)",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Slider(
-                            value = uiState.dateOffsetLunarCycles.toFloat(),
-                            onValueChange = {
-                                val stepped = (it * 2f).roundToInt() / 2.0
-                                onUpdateOffsetLunarCycles(stepped)
-                            },
-                            valueRange = -12f..12f,
-                            modifier = Modifier.testTag("date_offset_cycles_slider")
-                        )
-                    }
-
-                    // Resulting Date & Moon Phase Preview Card
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        shape = MaterialTheme.shapes.medium,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(56.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.background)
-                                    .padding(4.dp)
-                            ) {
-                                RealisticMoonCanvas(
-                                    phaseFraction = targetLunar.phaseFraction,
-                                    isNorthernHemisphere = uiState.isNorthernHemisphere,
-                                    showAmbientGlow = false
-                                )
-                            }
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = stringResource(R.string.date_calc_result_label),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.secondary
-                                )
-                                Text(
-                                    text = targetDate.formatSpanishLong().replaceFirstChar { it.uppercase() },
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.testTag("computed_target_date_text")
-                                )
-                                Text(
-                                    text = "${targetLunar.phaseType.emoji} ${targetLunar.phaseType.spanishName} • ${"%.1f".format(targetLunar.illuminationPercent)}% iluminada",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                    }
-
-                    Button(
-                        onClick = { onJumpToDateInCalendar(targetDate) },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        ),
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .testTag("jump_to_computed_date_button")
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.CalendarMonth,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
+                        Text(
+                            text = stringResource(R.string.date_calc_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.apply_to_calendar))
+
+                        Text(
+                            text = "Fecha base: ${uiState.selectedDate.formatSpanishLong().replaceFirstChar { it.uppercase() }} (${uiState.selectedDayLunarInfo.phaseType.emoji} ${uiState.selectedDayLunarInfo.phaseType.spanishName})",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = !uiState.useLunarCycleOffset,
+                                onClick = { onSetUseLunarCycleOffset(false) },
+                                label = { Text("Por Días") },
+                                modifier = Modifier.testTag("offset_by_days_chip")
+                            )
+                            FilterChip(
+                                selected = uiState.useLunarCycleOffset,
+                                onClick = { onSetUseLunarCycleOffset(true) },
+                                label = { Text("Por Ciclos Lunares (29.53d)") },
+                                modifier = Modifier.testTag("offset_by_cycles_chip")
+                            )
+                        }
+
+                        if (!uiState.useLunarCycleOffset) {
+                            Text(
+                                text = "Desplazamiento: ${if (uiState.dateOffsetDays >= 0) "+${uiState.dateOffsetDays}" else "${uiState.dateOffsetDays}"} días",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Slider(
+                                value = uiState.dateOffsetDays.toFloat(),
+                                onValueChange = { onUpdateOffsetDays(it.roundToInt()) },
+                                valueRange = -180f..180f,
+                                modifier = Modifier.testTag("date_offset_days_slider")
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                listOf(-30, -7, 7, 14, 29, 90).forEach { preset ->
+                                    AssistChip(
+                                        onClick = { onUpdateOffsetDays(preset) },
+                                        label = { Text(if (preset > 0) "+${preset}d" else "${preset}d") }
+                                    )
+                                }
+                            }
+                        } else {
+                            Text(
+                                text = "Ciclos sinódicos: ${"%.1f".format(uiState.dateOffsetLunarCycles)} lunas (${(uiState.dateOffsetLunarCycles * 29.5306).roundToInt()} días)",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Slider(
+                                value = uiState.dateOffsetLunarCycles.toFloat(),
+                                onValueChange = {
+                                    val stepped = (it * 2f).roundToInt() / 2.0
+                                    onUpdateOffsetLunarCycles(stepped)
+                                },
+                                valueRange = -12f..12f,
+                                modifier = Modifier.testTag("date_offset_cycles_slider")
+                            )
+                        }
+
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f),
+                            shape = MaterialTheme.shapes.medium,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(56.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.background)
+                                        .padding(4.dp)
+                                ) {
+                                    RealisticMoonCanvas(
+                                        phaseFraction = targetLunar.phaseFraction,
+                                        isNorthernHemisphere = uiState.isNorthernHemisphere,
+                                        showAmbientGlow = false
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = stringResource(R.string.date_calc_result_label),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.secondary
+                                    )
+                                    Text(
+                                        text = targetDate.formatSpanishLong().replaceFirstChar { it.uppercase() },
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.testTag("computed_target_date_text")
+                                    )
+                                    Text(
+                                        text = "${targetLunar.phaseType.emoji} ${targetLunar.phaseType.spanishName} • ${"%.1f".format(targetLunar.illuminationPercent)}% iluminada",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+
+                        Button(
+                            onClick = { onJumpToDateInCalendar(targetDate) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("jump_to_computed_date_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CalendarMonth,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(stringResource(R.string.apply_to_calendar))
+                        }
                     }
                 }
             }
         }
 
-        // 2. Interval Comparison Card (Days & Lunar Cycles between two dates)
+        // 2. Interval Comparison Card
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),

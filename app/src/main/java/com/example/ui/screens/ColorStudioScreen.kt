@@ -73,7 +73,9 @@ import com.example.domain.ColorSwatchSpec
 import com.example.domain.GradientPreset
 import com.example.domain.GradientStyleType
 import com.example.ui.ColorStudioSubTab
+import com.example.ui.ModuleThemeTarget
 import com.example.ui.SeleniaUiState
+import com.example.ui.components.SkinGradientCanvas
 import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.cos
@@ -95,6 +97,10 @@ fun ColorStudioScreen(
     onSetRadialFocalAndRadius: (Float, Float, Float) -> Unit,
     onCycleGradientVariant: () -> Unit,
     onApplyGradientPreset: (List<ColorSwatchSpec>) -> Unit,
+    onSelectThemeTarget: (ModuleThemeTarget) -> Unit,
+    onApplySkinToTarget: (ModuleThemeTarget) -> Unit,
+    onResetSkinForTarget: (ModuleThemeTarget) -> Unit,
+    onNavigateToModule: (ModuleThemeTarget) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val clipboardManager = LocalClipboardManager.current
@@ -274,6 +280,23 @@ fun ColorStudioScreen(
                         }
                     }
                 }
+            }
+
+            // 1.5. Interactive "Aplicar Color y Degradado a la Interfaz por Módulo" Card
+            item {
+                ModuleSkinApplicationCard(
+                    uiState = uiState,
+                    onSelectTarget = onSelectThemeTarget,
+                    onApplySkin = { target ->
+                        onApplySkinToTarget(target)
+                        copiedBannerText = "Tema y degradado ${uiState.gradientStyle.spanishTitle} (${active.hex}) aplicados a ${target.spanishTitle}"
+                    },
+                    onResetSkin = { target ->
+                        onResetSkinForTarget(target)
+                        copiedBannerText = "Tema original restaurado en ${target.spanishTitle}"
+                    },
+                    onNavigateToModule = onNavigateToModule
+                )
             }
 
             // 2. 5-Section Sub-Navigation Strip:
@@ -1532,3 +1555,275 @@ private fun TonalScaleCard(
         }
     }
 }
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ModuleSkinApplicationCard(
+    uiState: SeleniaUiState,
+    onSelectTarget: (ModuleThemeTarget) -> Unit,
+    onApplySkin: (ModuleThemeTarget) -> Unit,
+    onResetSkin: (ModuleThemeTarget) -> Unit,
+    onNavigateToModule: (ModuleThemeTarget) -> Unit
+) {
+    val selectedTarget = uiState.selectedThemeTarget
+    val activeColor = Color(
+        uiState.activeColorSwatch.rgb.r,
+        uiState.activeColorSwatch.rgb.g,
+        uiState.activeColorSwatch.rgb.b
+    )
+    val individualModules = listOf(
+        ModuleThemeTarget.CALENDAR,
+        ModuleThemeTarget.MOON_OBSERVATORY,
+        ModuleThemeTarget.CLOCK,
+        ModuleThemeTarget.CALCULATOR
+    )
+
+    Card(
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("apply_module_skin_card")
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "🎨 Aplicar a la Interfaz (Cada Módulo a su Manera)",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = activeColor
+                    )
+                    Text(
+                        text = "Personaliza Calendario, Luna, Reloj y Calculadora con su propio color y degradado (Lineal, Radial, Cónico o Malla).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Target selector chips
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(ModuleThemeTarget.entries) { target ->
+                    val isSelected = selectedTarget == target
+                    val hasCustom = if (target == ModuleThemeTarget.ALL_MODULES) {
+                        individualModules.all { uiState.skinFor(it).isCustomApplied }
+                    } else {
+                        uiState.skinFor(target).isCustomApplied
+                    }
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { onSelectTarget(target) },
+                        label = {
+                            Text(
+                                text = buildString {
+                                    append("${target.emoji} ${target.spanishTitle}")
+                                    if (hasCustom) append(" • Activo")
+                                }
+                            )
+                        },
+                        modifier = Modifier.testTag("skin_target_chip_${target.name.lowercase()}")
+                    )
+                }
+            }
+
+            // Explanation of how the selected module applies the skin + mini live preview
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .border(
+                                width = 1.5.dp,
+                                color = activeColor,
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                    ) {
+                        SkinGradientCanvas(
+                            style = uiState.gradientStyle,
+                            stops = uiState.activeGradientStops,
+                            angleDeg = uiState.gradientAngleDeg,
+                            focalX = uiState.radialFocalX,
+                            focalY = uiState.radialFocalY,
+                            radiusFactor = uiState.radialRadiusFactor,
+                            alphaIntensity = 0.85f,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        Text(
+                            text = selectedTarget.emoji,
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    }
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "Cómo se aplica en ${selectedTarget.spanishTitle}:",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = selectedTarget.howItAppliesDescription,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "Degradado listo: ${uiState.gradientStyle.spanishTitle} • Color: ${uiState.activeColorSwatch.hex}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = activeColor,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+
+            // Per-module status strip showing current color & gradient assigned to each of the 4 modules
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                individualModules.forEach { mod ->
+                    val modSkin = uiState.skinFor(mod)
+                    val swatchColor = if (modSkin.isCustomApplied) {
+                        Color(
+                            modSkin.primarySwatch.rgb.r,
+                            modSkin.primarySwatch.rgb.g,
+                            modSkin.primarySwatch.rgb.b
+                        )
+                    } else {
+                        MaterialTheme.colorScheme.outline
+                    }
+
+                    Surface(
+                        onClick = { onSelectTarget(mod) },
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(
+                            alpha = if (selectedTarget == mod) 0.9f else 0.4f
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .border(
+                                width = if (selectedTarget == mod) 1.5.dp else 0.5.dp,
+                                color = swatchColor.copy(alpha = 0.7f),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .clip(CircleShape)
+                                        .background(swatchColor)
+                                )
+                                Text(
+                                    text = mod.spanishTitle,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Text(
+                                text = if (modSkin.isCustomApplied) {
+                                    "${modSkin.primarySwatch.hex} • ${modSkin.gradientStyle.spanishTitle.substringBefore(" ")}"
+                                } else {
+                                    "Original"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (modSkin.isCustomApplied) swatchColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Action Buttons: Apply to selected target, Open target module, Reset target
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { onApplySkin(selectedTarget) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("apply_skin_to_target_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Aplicar a ${selectedTarget.spanishTitle}",
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                if (selectedTarget != ModuleThemeTarget.ALL_MODULES) {
+                    FilledTonalButton(
+                        onClick = {
+                            onApplySkin(selectedTarget)
+                            onNavigateToModule(selectedTarget)
+                        },
+                        modifier = Modifier.testTag("apply_and_open_module_button")
+                    ) {
+                        Text("Aplicar y Ver ${selectedTarget.emoji}")
+                    }
+                }
+
+                AssistChip(
+                    onClick = { onResetSkin(selectedTarget) },
+                    label = { Text("Restaurar") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Restaurar tema original",
+                            modifier = Modifier.size(16.dp)
+                        )
+                    },
+                    modifier = Modifier.testTag("reset_skin_target_button")
+                )
+            }
+        }
+    }
+}
+

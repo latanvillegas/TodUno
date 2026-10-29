@@ -45,6 +45,57 @@ enum class ColorStudioSubTab {
     COLOR_CATALOG
 }
 
+enum class ModuleThemeTarget(
+    val spanishTitle: String,
+    val shortBadge: String,
+    val emoji: String,
+    val howItAppliesDescription: String
+) {
+    ALL_MODULES(
+        spanishTitle = "Toda la App (Global)",
+        shortBadge = "Toda la App",
+        emoji = "🌐",
+        howItAppliesDescription = "Aplica el color y degradado simultáneamente a Calendario, Luna, Reloj y Calculadora."
+    ),
+    CALENDAR(
+        spanishTitle = "Calendario Lunar",
+        shortBadge = "Calendario",
+        emoji = "📅",
+        howItAppliesDescription = "Personaliza la cabecera del mes, el fondo de la ficha del día, los bordes de selección y los hitos lunares."
+    ),
+    MOON_OBSERVATORY(
+        spanishTitle = "Observatorio de la Luna",
+        shortBadge = "Luna",
+        emoji = "🌕",
+        howItAppliesDescription = "Tiñe la superficie iluminada de la Luna, su corona estelar, el fondo del observatorio y la barra sinódica."
+    ),
+    CLOCK(
+        spanishTitle = "Reloj, Cronómetro y Temporizador",
+        shortBadge = "Reloj",
+        emoji = "⌚",
+        howItAppliesDescription = "Personaliza el dial del reloj analógico, las agujas, los dígitos LED, el cronómetro y el anillo del temporizador."
+    ),
+    CALCULATOR(
+        spanishTitle = "Calculadora Científica y Fechas",
+        shortBadge = "Calculadora",
+        emoji = "🧮",
+        howItAppliesDescription = "Aplica el degradado al visor de resultados, la tecla '=' y los botones de operadores y funciones."
+    )
+}
+
+data class ModuleVisualSkin(
+    val target: ModuleThemeTarget,
+    val primarySwatch: ColorSwatchSpec,
+    val secondarySwatch: ColorSwatchSpec,
+    val gradientStops: List<ColorSwatchSpec>,
+    val gradientStyle: GradientStyleType = GradientStyleType.MESH,
+    val gradientAngleDeg: Int = 135,
+    val focalX: Float = 0.5f,
+    val focalY: Float = 0.5f,
+    val radiusFactor: Float = 0.9f,
+    val isCustomApplied: Boolean = false
+)
+
 data class CalendarNote(
     val id: Long,
     val date: SimpleDate,
@@ -91,6 +142,8 @@ data class SeleniaUiState(
     val radialRadiusFactor: Float = 0.85f,
     val gradientVariantIndex: Int = 0,
     val customGradientPresetStops: List<ColorSwatchSpec>? = null,
+    val selectedThemeTarget: ModuleThemeTarget = ModuleThemeTarget.ALL_MODULES,
+    val moduleSkins: Map<ModuleThemeTarget, ModuleVisualSkin> = defaultModuleSkins(),
     val savedColorSwatches: List<ColorSwatchSpec> = listOf(
         ColorHarmonyEngine.fromRgb(245, 196, 81),  // Oro Lunar #F5C451
         ColorHarmonyEngine.fromRgb(100, 210, 255), // Cian Celestial #64D2FF
@@ -124,6 +177,57 @@ data class SeleniaUiState(
     val activeGradientStops: List<ColorSwatchSpec>
         get() = customGradientPresetStops
             ?: ColorHarmonyEngine.buildDynamicGradientStops(activeColorSwatch, gradientVariantIndex)
+
+    fun skinFor(target: ModuleThemeTarget): ModuleVisualSkin {
+        return moduleSkins[target] ?: defaultSkinForTarget(target)
+    }
+
+    fun skinForDestination(destination: AppDestination): ModuleVisualSkin {
+        return when (destination) {
+            AppDestination.CALENDAR -> skinFor(ModuleThemeTarget.CALENDAR)
+            AppDestination.MOON_OBSERVATORY -> skinFor(ModuleThemeTarget.MOON_OBSERVATORY)
+            AppDestination.CLOCK -> skinFor(ModuleThemeTarget.CLOCK)
+            AppDestination.CALCULATOR -> skinFor(ModuleThemeTarget.CALCULATOR)
+            AppDestination.COLORS -> ModuleVisualSkin(
+                target = ModuleThemeTarget.ALL_MODULES,
+                primarySwatch = activeColorSwatch,
+                secondarySwatch = activeGradientStops.getOrElse(2) { activeColorSwatch },
+                gradientStops = activeGradientStops,
+                gradientStyle = gradientStyle,
+                gradientAngleDeg = gradientAngleDeg,
+                focalX = radialFocalX,
+                focalY = radialFocalY,
+                radiusFactor = radialRadiusFactor,
+                isCustomApplied = true
+            )
+        }
+    }
+
+    companion object {
+        fun defaultSkinForTarget(target: ModuleThemeTarget): ModuleVisualSkin {
+            val defaultPrimary = ColorHarmonyEngine.fromRgb(245, 196, 81)
+            val defaultSecondary = ColorHarmonyEngine.fromRgb(100, 210, 255)
+            val stops = ColorHarmonyEngine.buildDynamicGradientStops(defaultPrimary, 0)
+            return ModuleVisualSkin(
+                target = target,
+                primarySwatch = defaultPrimary,
+                secondarySwatch = defaultSecondary,
+                gradientStops = stops,
+                gradientStyle = GradientStyleType.MESH,
+                gradientAngleDeg = 135,
+                isCustomApplied = false
+            )
+        }
+
+        fun defaultModuleSkins(): Map<ModuleThemeTarget, ModuleVisualSkin> {
+            return listOf(
+                ModuleThemeTarget.CALENDAR,
+                ModuleThemeTarget.MOON_OBSERVATORY,
+                ModuleThemeTarget.CLOCK,
+                ModuleThemeTarget.CALCULATOR
+            ).associateWith { defaultSkinForTarget(it) }
+        }
+    }
 }
 
 class SeleniaViewModel : ViewModel() {
@@ -193,6 +297,78 @@ class SeleniaViewModel : ViewModel() {
 
     fun navigateTo(destination: AppDestination) {
         _uiState.update { it.copy(currentDestination = destination) }
+    }
+
+    fun openColorCustomizerForModule(target: ModuleThemeTarget) {
+        _uiState.update { current ->
+            val existingSkin = if (target == ModuleThemeTarget.ALL_MODULES) {
+                current.skinFor(ModuleThemeTarget.CALENDAR)
+            } else {
+                current.skinFor(target)
+            }
+            current.copy(
+                currentDestination = AppDestination.COLORS,
+                selectedThemeTarget = target,
+                activeColorSwatch = existingSkin.primarySwatch
+            )
+        }
+    }
+
+    fun selectThemeTarget(target: ModuleThemeTarget) {
+        _uiState.update { it.copy(selectedThemeTarget = target) }
+    }
+
+    fun applyActiveColorAndGradientToTarget(target: ModuleThemeTarget = _uiState.value.selectedThemeTarget) {
+        _uiState.update { current ->
+            val stops = current.activeGradientStops
+            val primary = current.activeColorSwatch
+            val secondary = stops.getOrElse(2) {
+                ColorHarmonyEngine.fromHsl(primary.hsl.h + 150f, primary.hsl.s.coerceAtLeast(60f), 65f)
+            }
+
+            fun createSkinFor(t: ModuleThemeTarget) = ModuleVisualSkin(
+                target = t,
+                primarySwatch = primary,
+                secondarySwatch = secondary,
+                gradientStops = stops,
+                gradientStyle = current.gradientStyle,
+                gradientAngleDeg = current.gradientAngleDeg,
+                focalX = current.radialFocalX,
+                focalY = current.radialFocalY,
+                radiusFactor = current.radialRadiusFactor,
+                isCustomApplied = true
+            )
+
+            val updatedSkins = current.moduleSkins.toMutableMap()
+            if (target == ModuleThemeTarget.ALL_MODULES) {
+                listOf(
+                    ModuleThemeTarget.CALENDAR,
+                    ModuleThemeTarget.MOON_OBSERVATORY,
+                    ModuleThemeTarget.CLOCK,
+                    ModuleThemeTarget.CALCULATOR
+                ).forEach { moduleTarget ->
+                    updatedSkins[moduleTarget] = createSkinFor(moduleTarget)
+                }
+            } else {
+                updatedSkins[target] = createSkinFor(target)
+            }
+
+            current.copy(
+                selectedThemeTarget = target,
+                moduleSkins = updatedSkins
+            )
+        }
+    }
+
+    fun resetSkinForTarget(target: ModuleThemeTarget = _uiState.value.selectedThemeTarget) {
+        _uiState.update { current ->
+            val updatedSkins = if (target == ModuleThemeTarget.ALL_MODULES) {
+                SeleniaUiState.defaultModuleSkins()
+            } else {
+                current.moduleSkins + (target to SeleniaUiState.defaultSkinForTarget(target))
+            }
+            current.copy(moduleSkins = updatedSkins)
+        }
     }
 
     fun selectClockSubTab(subTab: ClockSubTab) {

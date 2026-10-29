@@ -14,14 +14,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.AssistChip
@@ -30,6 +29,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -39,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -48,7 +49,9 @@ import com.example.R
 import com.example.domain.LunarAstronomer
 import com.example.domain.MoonPhaseType
 import com.example.domain.SimpleDate
+import com.example.ui.ModuleThemeTarget
 import com.example.ui.SeleniaUiState
+import com.example.ui.components.ModuleSkinBox
 import com.example.ui.components.RealisticMoonCanvas
 import kotlin.math.roundToInt
 
@@ -59,9 +62,26 @@ fun MoonObservatoryScreen(
     onJumpToToday: () -> Unit,
     onSelectDate: (SimpleDate) -> Unit,
     onToggleHemisphere: () -> Unit,
+    onOpenColorCustomizer: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val info = uiState.selectedDayLunarInfo
+    val skin = uiState.skinFor(ModuleThemeTarget.MOON_OBSERVATORY)
+    val customMoonLitColor = if (skin.isCustomApplied) {
+        Color(skin.primarySwatch.rgb.r, skin.primarySwatch.rgb.g, skin.primarySwatch.rgb.b)
+    } else {
+        Color(0xFFF7E7B4)
+    }
+    val customMoonHighlight = if (skin.isCustomApplied) {
+        val sec = skin.secondarySwatch.rgb
+        Color(
+            red = ((sec.r + 255) / 2).coerceIn(0, 255),
+            green = ((sec.g + 255) / 2).coerceIn(0, 255),
+            blue = ((sec.b + 255) / 2).coerceIn(0, 255)
+        )
+    } else {
+        Color(0xFFFFF8E1)
+    }
 
     Box(
         modifier = modifier.fillMaxSize(),
@@ -75,7 +95,7 @@ fun MoonObservatoryScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 1. Hero Lunar Sphere & Interactive Date Stepper
+            // 1. Hero Lunar Sphere & Interactive Date Stepper with custom Moon Skin
             item {
                 Card(
                     shape = MaterialTheme.shapes.extraLarge,
@@ -84,143 +104,180 @@ fun MoonObservatoryScreen(
                     ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        MaterialTheme.colorScheme.background,
-                                        MaterialTheme.colorScheme.surface,
-                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
-                                    )
-                                )
-                            )
-                            .padding(20.dp)
+                    ModuleSkinBox(
+                        skin = skin,
+                        alphaIntensity = 0.42f,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        // Top bar: Hemisphere switch + Today button
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            FilterChip(
-                                selected = true,
-                                onClick = onToggleHemisphere,
-                                label = {
-                                    Text(
-                                        if (uiState.isNorthernHemisphere) {
-                                            stringResource(R.string.hemisphere_north)
-                                        } else {
-                                            stringResource(R.string.hemisphere_south)
-                                        }
-                                    )
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.Public,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                },
-                                modifier = Modifier.testTag("hemisphere_toggle_chip")
-                            )
-
-                            AssistChip(
-                                onClick = onJumpToToday,
-                                label = { Text(stringResource(R.string.today_button)) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.Today,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                },
-                                modifier = Modifier.testTag("moon_today_button")
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // Large Realistic Moon Canvas
-                        Box(
-                            contentAlignment = Alignment.Center,
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier
-                                .size(220.dp)
-                                .testTag("hero_moon_canvas")
+                                .fillMaxWidth()
+                                .background(
+                                    if (!skin.isCustomApplied) {
+                                        Brush.verticalGradient(
+                                            colors = listOf(
+                                                MaterialTheme.colorScheme.background,
+                                                MaterialTheme.colorScheme.surface,
+                                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+                                            )
+                                        )
+                                    } else {
+                                        Brush.verticalGradient(
+                                            listOf(Color.Transparent, Color.Transparent)
+                                        )
+                                    }
+                                )
+                                .padding(20.dp)
                         ) {
-                            RealisticMoonCanvas(
-                                phaseFraction = info.phaseFraction,
-                                isNorthernHemisphere = uiState.isNorthernHemisphere,
-                                showAmbientGlow = true
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Text(
-                            text = "${info.phaseType.emoji} ${info.phaseType.spanishName}",
-                            style = MaterialTheme.typography.displaySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.testTag("moon_phase_name_text")
-                        )
-
-                        Text(
-                            text = uiState.selectedDate.formatSpanishLong().replaceFirstChar { it.uppercase() },
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Date Stepper Row: -7d, -1d, +1d, +7d
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            AssistChip(
-                                onClick = { onStepDay(-7) },
-                                label = { Text(stringResource(R.string.jump_minus_7)) },
-                                modifier = Modifier.testTag("moon_step_minus_7")
-                            )
-                            FilledTonalIconButton(
-                                onClick = { onStepDay(-1) },
-                                modifier = Modifier.testTag("moon_step_minus_1")
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                                    contentDescription = stringResource(R.string.prev_day_desc)
+                                FilterChip(
+                                    selected = true,
+                                    onClick = onToggleHemisphere,
+                                    label = {
+                                        Text(
+                                            if (uiState.isNorthernHemisphere) {
+                                                stringResource(R.string.hemisphere_north)
+                                            } else {
+                                                stringResource(R.string.hemisphere_south)
+                                            }
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Public,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    },
+                                    modifier = Modifier.testTag("hemisphere_toggle_chip")
+                                )
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    IconButton(
+                                        onClick = onOpenColorCustomizer,
+                                        modifier = Modifier.testTag("moon_customize_color_button")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Palette,
+                                            contentDescription = "Personalizar color de la Luna",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    AssistChip(
+                                        onClick = onJumpToToday,
+                                        label = { Text(stringResource(R.string.today_button)) },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Default.Today,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        },
+                                        modifier = Modifier.testTag("moon_today_button")
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Large Realistic Moon Canvas tinted with the Moon Module's custom color!
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(220.dp)
+                                    .testTag("hero_moon_canvas")
+                            ) {
+                                RealisticMoonCanvas(
+                                    phaseFraction = info.phaseFraction,
+                                    isNorthernHemisphere = uiState.isNorthernHemisphere,
+                                    showAmbientGlow = true,
+                                    litColor = customMoonLitColor,
+                                    litHighlightColor = customMoonHighlight
                                 )
                             }
-                            Surface(
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                shape = RoundedCornerShape(16.dp)
-                            ) {
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = "${info.phaseType.emoji} ${info.phaseType.spanishName}",
+                                style = MaterialTheme.typography.displaySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.testTag("moon_phase_name_text")
+                            )
+
+                            Text(
+                                text = uiState.selectedDate.formatSpanishLong().replaceFirstChar { it.uppercase() },
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
+
+                            if (skin.isCustomApplied) {
+                                Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "${"%.1f".format(info.illuminationPercent)}% luz",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                    text = "Luna personalizada: ${skin.primarySwatch.label} (${skin.primarySwatch.hex})",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.secondary
                                 )
                             }
-                            FilledTonalIconButton(
-                                onClick = { onStepDay(1) },
-                                modifier = Modifier.testTag("moon_step_plus_1")
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Date Stepper Row: -7d, -1d, +1d, +7d
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                    contentDescription = stringResource(R.string.next_day_desc)
+                                AssistChip(
+                                    onClick = { onStepDay(-7) },
+                                    label = { Text(stringResource(R.string.jump_minus_7)) },
+                                    modifier = Modifier.testTag("moon_step_minus_7")
+                                )
+                                FilledTonalIconButton(
+                                    onClick = { onStepDay(-1) },
+                                    modifier = Modifier.testTag("moon_step_minus_1")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                        contentDescription = stringResource(R.string.prev_day_desc)
+                                    )
+                                }
+                                Surface(
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
+                                    Text(
+                                        text = "${"%.1f".format(info.illuminationPercent)}% luz",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                    )
+                                }
+                                FilledTonalIconButton(
+                                    onClick = { onStepDay(1) },
+                                    modifier = Modifier.testTag("moon_step_plus_1")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                        contentDescription = stringResource(R.string.next_day_desc)
+                                    )
+                                }
+                                AssistChip(
+                                    onClick = { onStepDay(7) },
+                                    label = { Text(stringResource(R.string.jump_plus_7)) },
+                                    modifier = Modifier.testTag("moon_step_plus_7")
                                 )
                             }
-                            AssistChip(
-                                onClick = { onStepDay(7) },
-                                label = { Text(stringResource(R.string.jump_plus_7)) },
-                                modifier = Modifier.testTag("moon_step_plus_7")
-                            )
                         }
                     }
                 }
@@ -266,7 +323,6 @@ fun MoonObservatoryScreen(
                                 .clip(RoundedCornerShape(4.dp))
                         )
 
-                        // 8 phases row
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -281,7 +337,7 @@ fun MoonObservatoryScreen(
                                             if (isActive) {
                                                 MaterialTheme.colorScheme.primaryContainer
                                             } else {
-                                                androidx.compose.ui.graphics.Color.Transparent
+                                                Color.Transparent
                                             }
                                         )
                                         .padding(horizontal = 4.dp, vertical = 6.dp)
