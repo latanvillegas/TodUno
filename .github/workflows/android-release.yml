@@ -1,0 +1,146 @@
+name: Build APK & Publish GitHub Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Etiqueta de versión para el Release (ej. v1.0.0)"
+        required: false
+        default: "v1.0.0"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Compilar APK y Publicar Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Configurar Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Preparar archivo .env por defecto si no existe
+        run: |
+          if [ ! -f ".env" ] && [ -f ".env.example" ]; then
+            cp .env.example .env
+          fi
+
+      - name: Generar debug.keystore si no existe
+        run: |
+          if [ ! -f "debug.keystore" ]; then
+            keytool -genkeypair -v \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Preparar Keystore de Release (Secreto o Autogenerado)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          SECRET_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          SECRET_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "Usando Keystore configurado en GitHub Secrets..."
+            echo "$KEYSTORE_BASE64" | base64 --decode > "${GITHUB_WORKSPACE}/my-upload-key.jks"
+            echo "KEYSTORE_PATH=${GITHUB_WORKSPACE}/my-upload-key.jks" >> $GITHUB_ENV
+            echo "STORE_PASSWORD=${SECRET_STORE_PASSWORD}" >> $GITHUB_ENV
+            echo "KEY_PASSWORD=${SECRET_KEY_PASSWORD}" >> $GITHUB_ENV
+          else
+            echo "Generando Keystore de firma automática para Release..."
+            keytool -genkeypair -v \
+              -keystore "${GITHUB_WORKSPACE}/my-upload-key.jks" \
+              -storepass selenia123 \
+              -alias upload \
+              -keypass selenia123 \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Selenia Lunar,OU=Mobile,O=Selenia,L=Madrid,S=Madrid,C=ES"
+            echo "KEYSTORE_PATH=${GITHUB_WORKSPACE}/my-upload-key.jks" >> $GITHUB_ENV
+            echo "STORE_PASSWORD=selenia123" >> $GITHUB_ENV
+            echo "KEY_PASSWORD=selenia123" >> $GITHUB_ENV
+          fi
+
+      - name: Ejecutar pruebas unitarias
+        run: gradle :app:testDebugUnitTest
+
+      - name: Compilar APK Debug y Release firmadas
+        run: gradle :app:assembleDebug :app:assembleRelease
+
+      - name: Preparar archivos APK para distribución
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk dist/Selenia-Luna-y-Calc-release.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Selenia-Luna-y-Calc-debug.apk
+          ls -lh dist/
+
+      - name: Subir APKs como Artifact de GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: Selenia-Luna-y-Calc-APKs
+          path: dist/*.apk
+          if-no-files-found: error
+
+      - name: Determinar etiqueta de versión (Tag)
+        id: version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+          elif [[ -n "${{ github.event.inputs.release_tag }}" ]]; then
+            TAG_NAME="${{ github.event.inputs.release_tag }}"
+          else
+            TAG_NAME="v1.0.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "tag=${TAG_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Publicar Release en GitHub con APKs adjuntas
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "Selenia: Luna y Calc ${{ steps.version.outputs.tag }}"
+          body: |
+            ## 🌙 Selenia: Calendario, Fases de la Luna y Calculadora (${{ steps.version.outputs.tag }})
+
+            ### 📦 Descarga directa de APK
+            Descarga e instala cualquiera de los archivos adjuntos en tu dispositivo Android (Android 7.0 / API 24 o superior):
+            - **`Selenia-Luna-y-Calc-release.apk`**: Versión optimizada y firmada lista para instalar.
+            - **`Selenia-Luna-y-Calc-debug.apk`**: Versión de depuración.
+
+            ### ✨ Características incluidas
+            - 📅 **Calendario Lunar Mensual**: Fases de la luna día por día, hitos mensuales y notas personales por fecha.
+            - 🌕 **Observatorio Lunar**: Esfera lunar interactiva en Canvas, soporte Hemisferio Norte/Sur, distancia orbital, elongación eclíptica y guía tradicional de mareas y siembra.
+            - 🧮 **Calculadora Científica y de Fechas**: Funciones trigonométricas, constantes astronómicas (`29.5306 días`), conversión entre días y meses sinódicos, y cálculo de intervalos entre fechas.
+          files: |
+            dist/Selenia-Luna-y-Calc-release.apk
+            dist/Selenia-Luna-y-Calc-debug.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
