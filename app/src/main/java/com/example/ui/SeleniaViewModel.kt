@@ -3,6 +3,8 @@ package com.example.ui
 import androidx.lifecycle.ViewModel
 import com.example.domain.CalculationRecord
 import com.example.domain.CalendarDayCell
+import com.example.domain.ColorHarmonyEngine
+import com.example.domain.ColorSwatchSpec
 import com.example.domain.LunarAstronomer
 import com.example.domain.LunarDayInfo
 import com.example.domain.MajorPhaseMilestone
@@ -19,7 +21,8 @@ enum class AppDestination {
     CALENDAR,
     MOON_OBSERVATORY,
     CLOCK,
-    CALCULATOR
+    CALCULATOR,
+    COLORS
 }
 
 enum class ClockSubTab {
@@ -31,6 +34,12 @@ enum class ClockSubTab {
 enum class CalculatorMode {
     SCIENTIFIC,
     DATE_AND_LUNAR
+}
+
+enum class ColorStudioSubTab {
+    CONVERTER_SLIDERS,
+    COMBINATIONS,
+    TONES_AND_SHADES
 }
 
 data class CalendarNote(
@@ -67,7 +76,19 @@ data class SeleniaUiState(
     val dateOffsetDays: Int = 29,
     val dateOffsetLunarCycles: Double = 1.0,
     val useLunarCycleOffset: Boolean = false,
-    val comparisonEndDate: SimpleDate = LunarAstronomer.addDays(LunarAstronomer.today(), 30)
+    val comparisonEndDate: SimpleDate = LunarAstronomer.addDays(LunarAstronomer.today(), 30),
+
+    // Color Studio State
+    val colorStudioSubTab: ColorStudioSubTab = ColorStudioSubTab.CONVERTER_SLIDERS,
+    val activeColorSwatch: ColorSwatchSpec = ColorHarmonyEngine.fromRgb(245, 196, 81),
+    val savedColorSwatches: List<ColorSwatchSpec> = listOf(
+        ColorHarmonyEngine.fromRgb(245, 196, 81),  // Oro Lunar #F5C451
+        ColorHarmonyEngine.fromRgb(100, 210, 255), // Cian Celestial #64D2FF
+        ColorHarmonyEngine.fromRgb(92, 225, 166),  // Menta Aurora #5CE1A6
+        ColorHarmonyEngine.fromRgb(255, 122, 107), // Coral Eclipse #FF7A6B
+        ColorHarmonyEngine.fromRgb(138, 92, 246),  // Violeta Nebulosa #8A5CF6
+        ColorHarmonyEngine.fromRgb(28, 39, 82)     // Índigo Astrolabio #1C2752
+    )
 ) {
     val computedTargetDate: SimpleDate
         get() {
@@ -164,6 +185,40 @@ class SeleniaViewModel : ViewModel() {
 
     fun toggle24HourFormat() {
         _uiState.update { it.copy(is24HourFormat = !it.is24HourFormat) }
+    }
+
+    fun selectColorStudioSubTab(subTab: ColorStudioSubTab) {
+        _uiState.update { it.copy(colorStudioSubTab = subTab) }
+    }
+
+    fun updateColorFromRgb(r: Int, g: Int, b: Int) {
+        _uiState.update { it.copy(activeColorSwatch = ColorHarmonyEngine.fromRgb(r, g, b)) }
+    }
+
+    fun updateColorFromHsl(h: Float, s: Float, l: Float) {
+        _uiState.update { it.copy(activeColorSwatch = ColorHarmonyEngine.fromHsl(h, s, l)) }
+    }
+
+    fun updateColorFromCmyk(c: Int, m: Int, y: Int, k: Int) {
+        _uiState.update { it.copy(activeColorSwatch = ColorHarmonyEngine.fromCmyk(c, m, y, k)) }
+    }
+
+    fun updateColorFromHex(hexInput: String) {
+        val parsed = ColorHarmonyEngine.parseHexToRgb(hexInput) ?: return
+        _uiState.update {
+            it.copy(activeColorSwatch = ColorHarmonyEngine.fromRgb(parsed.r, parsed.g, parsed.b))
+        }
+    }
+
+    fun saveFavoriteColor() {
+        _uiState.update { current ->
+            val active = current.activeColorSwatch
+            if (current.savedColorSwatches.any { it.hex == active.hex }) {
+                current
+            } else {
+                current.copy(savedColorSwatches = listOf(active) + current.savedColorSwatches.take(15))
+            }
+        }
     }
 
     fun selectDate(date: SimpleDate) {

@@ -1,12 +1,13 @@
 <resources>
     <string name="app_name">Selenia: Luna y Calc</string>
-    <string name="subtitle_observatory">Calendario, Luna, Reloj y Calculadora</string>
+    <string name="subtitle_observatory">Calendario, Luna, Reloj, Calc y Colores</string>
 
     <!-- Navigation -->
     <string name="nav_calendar">Calendario</string>
     <string name="nav_moon">Luna</string>
     <string name="nav_clock">Reloj</string>
-    <string name="nav_calculator">Calculadora</string>
+    <string name="nav_calculator">Calc</string>
+    <string name="nav_colors">Colores</string>
 
     <!-- Calendar Screen -->
     <string name="today_button">Hoy</string>

@@ -26,10 +26,12 @@ import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.NightlightRound
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.outlined.AccessTime
 import androidx.compose.material.icons.outlined.Calculate
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.NightlightRound
+import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -63,6 +65,7 @@ import com.example.ui.components.RealisticMoonCanvas
 import com.example.ui.screens.CalculatorScreen
 import com.example.ui.screens.CalendarScreen
 import com.example.ui.screens.ClockScreen
+import com.example.ui.screens.ColorStudioScreen
 import com.example.ui.screens.MoonObservatoryScreen
 import com.example.ui.theme.ApplicationTheme
 import kotlinx.coroutines.delay
@@ -130,6 +133,13 @@ fun SeleniaApp(
             selectedIcon = Icons.Filled.Calculate,
             unselectedIcon = Icons.Outlined.Calculate,
             testTag = "nav_tab_calculator"
+        ),
+        NavItemSpec(
+            destination = AppDestination.COLORS,
+            labelRes = R.string.nav_colors,
+            selectedIcon = Icons.Filled.Palette,
+            unselectedIcon = Icons.Outlined.Palette,
+            testTag = "nav_tab_colors"
         )
     )
 
@@ -284,7 +294,6 @@ private fun SeleniaTopHeader(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Live Clock Pill in Header
                 Surface(
                     onClick = onHeaderClockClick,
                     color = MaterialTheme.colorScheme.surfaceVariant,
@@ -300,7 +309,6 @@ private fun SeleniaTopHeader(
                     )
                 }
 
-                // Live Moon Badge showing active date's moon phase
                 Surface(
                     onClick = onHeaderMoonClick,
                     color = MaterialTheme.colorScheme.surfaceVariant,
@@ -393,6 +401,16 @@ private fun SeleniaMainContent(
                     viewModel.selectDate(targetDate)
                     viewModel.navigateTo(AppDestination.CALENDAR)
                 }
+            )
+
+            AppDestination.COLORS -> ColorStudioScreen(
+                uiState = uiState,
+                onSelectSubTab = viewModel::selectColorStudioSubTab,
+                onUpdateRgb = viewModel::updateColorFromRgb,
+                onUpdateHsl = viewModel::updateColorFromHsl,
+                onUpdateCmyk = viewModel::updateColorFromCmyk,
+                onApplyHex = viewModel::updateColorFromHex,
+                onSaveFavoriteColor = viewModel::saveFavoriteColor
             )
         }
     }

@@ -1,10 +1,10 @@
-# 🌙 Selenia: Luna y Calc (4 en 1)
+# 🌙 Selenia: Luna y Calc (5 en 1)
 
-**Calendario Astronómico, Observatorio de Fases de la Luna, Reloj Astronómico/Mundial y Calculadora Científica + de Fechas en una sola APK para Android.**
+**Calendario Astronómico, Observatorio de Fases de la Luna, Reloj Astronómico/Mundial, Calculadora Científica + de Fechas y Estudio de Colores (RGB, HEX, CMYK, HSL, Combinaciones y Tonos) en una sola APK para Android.**
 
 ---
 
-## ✨ Características Principales (4 en 1)
+## ✨ Características Principales (5 en 1)
 
 ### 1. 📅 Calendario Lunar Interactivo
 - **Cuadrícula Mensual con Miniaturas Lunares**: Visualiza la fase exacta de la luna en cada día del mes (ciclo sinódico de `29.53059 días`).
@@ -34,6 +34,18 @@
   - Suma o resta días (`±180 días`) o ciclos sinódicos (`±12 lunas`) a la fecha seleccionada y descubre qué fecha será y qué fase lunar tendrá.
   - Calcula el intervalo exacto en **días naturales** y **meses sinódicos lunares** entre dos fechas cualesquiera.
 
+### 5. 🎨 Estudio y Conversor de Colores (RGB • HEX • CMYK • HSL)
+- **Conversión Bidireccional en Tiempo Real**:
+  - **HEX**: Entrada directa `#RRGGBB`, barra de espectro cromático de `360°` y paleta de favoritos guardados.
+  - **RGB**: Controles deslizantes independientes para Rojo (`0–255`), Verde (`0–255`) y Azul (`0–255`).
+  - **CMYK**: Controles para Cian (`0–100%`), Magenta (`0–100%`), Amarillo (`0–100%`) y Negro/Key (`0–100%`).
+  - **HSL**: Controles para Matiz (`0°–360°`), Saturación (`0–100%`) y Luminosidad (`0–100%`).
+  - **Copiado Instantáneo y Contraste WCAG**: Toca cualquiera de las tarjetas (`HEX`, `RGB`, `CMYK`, `HSL`) para copiar su código al portapapeles y verifica el ratio de contraste sobre texto blanco y negro.
+- **Combinaciones Armónicas**:
+  - Generación automática de paletas **Complementaria**, **Análoga**, **Triádica**, **Complementaria Dividida** y **Tetrádica (Cuadrada)**.
+- **Tonos, Matices y Sombras**:
+  - Escala completa de **Luminosidad (`L%` de 92% pastel a 12% sombra profunda)** y escala de **Saturación (`S%` de 100% puro a 10% neutro)** con valores `HEX`, `RGB` y `CMYK` en cada muestra.
+
 ---
 
 ## 🚀 Sincronización con GitHub, Compilación con Actions y Publicación de Releases
@@ -44,48 +56,10 @@ Este proyecto incluye el flujo de trabajo automatizado en **`.github/workflows/a
 
 1. **Sincroniza o haz push del repositorio a GitHub** en la rama `main` (o `master`), o crea un tag como `v1.0.0`.
 2. **GitHub Actions** se ejecutará automáticamente y realizará los siguientes pasos:
-   - Configura **JDK 21**, **Android SDK (API 36.1)** y **Gradle 9.3.1**.
+   - Configura **JDK 21**, **Android SDK (API 36)** y **Gradle 9.3.1**.
    - Ejecuta las pruebas unitarias (`./gradlew :app:testDebugUnitTest`).
    - Genera las llaves de firma automáticamente (o utiliza tus propios secretos si los defines) y compila:
      - `Selenia-Luna-y-Calc-release.apk` (APK firmada de producción)
      - `Selenia-Luna-y-Calc-debug.apk` (APK de depuración)
    - Sube las APKs como **Artifacts** de la ejecución.
    - **Publica automáticamente un GitHub Release** con una etiqueta de versión (`v1.0.X` o el tag que hayas enviado) adjuntando las APKs listas para descargar e instalar en Android.
-
-### Ejecución manual desde la pestaña Actions
-También puedes publicar un nuevo Release manualmente en cualquier momento:
-1. Ve a la pestaña **Actions** en tu repositorio de GitHub.
-2. Selecciona el flujo **Build APK & Publish GitHub Release**.
-3. Haz clic en **Run workflow**, escribe la versión deseada (por ejemplo, `v1.1.0`) y pulsa **Run workflow**.
-
-### 🔐 Firma personalizada opcional (GitHub Secrets)
-El flujo funciona **sin configurar ningún secreto** gracias a su generación automática de keystore. Si deseas usar tu propio certificado `.jks` permanente para actualizaciones futuras:
-1. Convierte tu archivo `.jks` a Base64:
-   ```bash
-   base64 -w 0 my-upload-key.jks
-   ```
-2. En tu repositorio de GitHub, ve a **Settings → Secrets and variables → Actions** y agrega:
-   - `KEYSTORE_BASE64`: El contenido en Base64 de tu keystore (con el alias `upload`).
-   - `STORE_PASSWORD`: La contraseña del almacén de claves.
-   - `KEY_PASSWORD`: La contraseña de la clave `upload`.
-
----
-
-## 🛠️ Requisitos y Compilación Local
-
-- **Android Studio**: Ladybug / Meerkat o superior
-- **Compile SDK / Target SDK**: 36
-- **Min SDK**: 24 (Android 7.0+)
-- **Lenguaje y UI**: 100% Kotlin + Jetpack Compose (Material Design 3)
-
-### Comandos útiles con Gradle
-```bash
-# Ejecutar pruebas unitarias
-./gradlew :app:testDebugUnitTest
-
-# Compilar APK de depuración
-./gradlew :app:assembleDebug
-
-# Compilar APK de producción (Release)
-./gradlew :app:assembleRelease
-```
