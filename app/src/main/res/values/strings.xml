@@ -1,10 +1,11 @@
 <resources>
     <string name="app_name">Selenia: Luna y Calc</string>
-    <string name="subtitle_observatory">Almanaque Lunar, Calendario y Calculadora</string>
+    <string name="subtitle_observatory">Calendario, Luna, Reloj y Calculadora</string>
 
     <!-- Navigation -->
     <string name="nav_calendar">Calendario</string>
-    <string name="nav_moon">Fases Lunares</string>
+    <string name="nav_moon">Luna</string>
+    <string name="nav_clock">Reloj</string>
     <string name="nav_calculator">Calculadora</string>
 
     <!-- Calendar Screen -->
@@ -33,6 +34,19 @@
     <string name="biorhythm_activity_title">Guía Tradicional del Ciclo</string>
     <string name="jump_plus_7">+7 días</string>
     <string name="jump_minus_7">-7 días</string>
+
+    <!-- Clock Screen -->
+    <string name="clock_tab_world">Reloj y Husos</string>
+    <string name="clock_tab_stopwatch">Cronómetro</string>
+    <string name="clock_tab_timer">Temporizador</string>
+    <string name="clock_format_24h">24h</string>
+    <string name="clock_format_12h">12h AM/PM</string>
+    <string name="world_clocks_title">Reloj Mundial y Tiempo Universal</string>
+    <string name="stopwatch_start">Iniciar</string>
+    <string name="stopwatch_pause">Pausar</string>
+    <string name="stopwatch_lap">Vuelta</string>
+    <string name="stopwatch_reset">Reiniciar</string>
+    <string name="timer_finished_message">¡Tiempo completado!</string>
 
     <!-- Calculator Screen -->
     <string name="calc_mode_standard">Científica</string>

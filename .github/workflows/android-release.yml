@@ -145,9 +145,10 @@ jobs:
             - **`Selenia-Luna-y-Calc-release.apk`**: Versión optimizada y firmada lista para instalar.
             - **`Selenia-Luna-y-Calc-debug.apk`**: Versión de depuración.
 
-            ### ✨ Características incluidas
+            ### ✨ Características incluidas (4 en 1)
             - 📅 **Calendario Lunar Mensual**: Fases de la luna día por día, hitos mensuales y notas personales por fecha.
-            - 🌕 **Observatorio Lunar**: Esfera lunar interactiva en Canvas, soporte Hemisferio Norte/Sur, distancia orbital, elongación eclíptico y guía tradicional de mareas y siembra.
+            - 🌕 **Observatorio Lunar**: Esfera lunar interactiva en Canvas, soporte Hemisferio Norte/Sur, distancia orbital, elongación eclíptica y guía tradicional de mareas y siembra.
+            - ⌚ **Reloj Astronómico, Mundial, Cronómetro y Temporizador**: Reloj analógico con complicación lunar + digital (12h/24h, UTC y Tiempo Sideral GMST), husos horarios mundiales, cronómetro con vueltas y temporizador circular.
             - 🧮 **Calculadora Científica y de Fechas**: Funciones trigonométricas, constantes astronómicas (`29.5306 días`), conversión entre días y meses sinódicos, y cálculo de intervalos entre fechas.
           files: |
             dist/Selenia-Luna-y-Calc-release.apk

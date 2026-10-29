@@ -1,10 +1,10 @@
-# 🌙 Selenia: Luna y Calc
+# 🌙 Selenia: Luna y Calc (4 en 1)
 
-**Calendario Astronómico, Observatorio de Fases de la Luna y Calculadora Científica + de Fechas en una sola APK para Android.**
+**Calendario Astronómico, Observatorio de Fases de la Luna, Reloj Astronómico/Mundial y Calculadora Científica + de Fechas en una sola APK para Android.**
 
 ---
 
-## ✨ Características Principales
+## ✨ Características Principales (4 en 1)
 
 ### 1. 📅 Calendario Lunar Interactivo
 - **Cuadrícula Mensual con Miniaturas Lunares**: Visualiza la fase exacta de la luna en cada día del mes (ciclo sinódico de `29.53059 días`).
@@ -19,7 +19,13 @@
 - **Guía de Mareas y Biorritmo Natural**: Información detallada sobre mareas vivas (sicigia), mareas muertas (cuadratura), observación astronómica y tareas agrícolas.
 - **Próximas 4 Fases Principales**: Cronograma interactivo con cuenta regresiva en días hacia las siguientes fases clave.
 
-### 3. 🧮 Calculadora Dual (Científica + Fechas y Ciclos Lunares)
+### 3. ⌚ Reloj Astronómico, Reloj Mundial, Cronómetro y Temporizador
+- **Reloj Analógico con Complicación de Fase Lunar + Digital**: Esfera de reloj astronómico con segundero fluido, subesfera lunar integrada, cambio de formato `24h / 12h AM/PM`, **Tiempo Universal (UTC)** y **Tiempo Sideral Medio de Greenwich (GMST)**.
+- **Reloj Mundial**: Consulta la hora en tiempo real e indicador día/noche (`☀️`/`🌙`) en las principales capitales y zonas horarias (*UTC, Madrid, Ciudad de México, Bogotá/Lima, Buenos Aires, Nueva York, Tokio*).
+- **Cronómetro de Precisión**: Medición centesimal con registro ilimitado de vueltas (*Laps*) y tiempos parciales.
+- **Temporizador con Anillo Circular**: Cuenta regresiva visual con ajustes rápidos (`-1m`, `+30s`, `+1m`) y preajustes directos (incluyendo ciclo de `29.5 min`).
+
+### 4. 🧮 Calculadora Dual (Científica + Fechas y Ciclos Lunares)
 - **Modo Científica + Lunar**:
   - Operaciones aritméticas (`+`, `−`, `×`, `÷`, `%`, `^`), paréntesis y funciones científicas (`sin`, `cos`, `tan`, `√`, `ln`, `π`).
   - **Botones Astronómicos Directos**: Multiplica por el ciclo sinódico (`× 29.53d`), convierte días naturales a meses lunares (`Días → Lunas`) o inserta la constante sinódica (`29.5306`).
@@ -38,8 +44,8 @@ Este proyecto incluye el flujo de trabajo automatizado en **`.github/workflows/a
 
 1. **Sincroniza o haz push del repositorio a GitHub** en la rama `main` (o `master`), o crea un tag como `v1.0.0`.
 2. **GitHub Actions** se ejecutará automáticamente y realizará los siguientes pasos:
-   - Configura **JDK 21**, **Android SDK** y **Gradle 9.3.1**.
-   - Ejecuta las pruebas unitarias (`gradle :app:testDebugUnitTest`).
+   - Configura **JDK 21**, **Android SDK (API 36.1)** y **Gradle 9.3.1**.
+   - Ejecuta las pruebas unitarias (`./gradlew :app:testDebugUnitTest`).
    - Genera las llaves de firma automáticamente (o utiliza tus propios secretos si los defines) y compila:
      - `Selenia-Luna-y-Calc-release.apk` (APK firmada de producción)
      - `Selenia-Luna-y-Calc-debug.apk` (APK de depuración)
@@ -74,12 +80,12 @@ El flujo funciona **sin configurar ningún secreto** gracias a su generación au
 
 ### Comandos útiles con Gradle
 ```bash
-# Ejecutar pruebas unitarias y Robolectric
-gradle :app:testDebugUnitTest
+# Ejecutar pruebas unitarias
+./gradlew :app:testDebugUnitTest
 
 # Compilar APK de depuración
-gradle :app:assembleDebug
+./gradlew :app:assembleDebug
 
 # Compilar APK de producción (Release)
-gradle :app:assembleRelease
+./gradlew :app:assembleRelease
 ```

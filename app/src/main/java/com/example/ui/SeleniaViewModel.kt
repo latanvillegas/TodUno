@@ -18,7 +18,14 @@ import kotlin.math.roundToInt
 enum class AppDestination {
     CALENDAR,
     MOON_OBSERVATORY,
+    CLOCK,
     CALCULATOR
+}
+
+enum class ClockSubTab {
+    WORLD_CLOCK,
+    STOPWATCH,
+    TIMER
 }
 
 enum class CalculatorMode {
@@ -45,6 +52,10 @@ data class SeleniaUiState(
     val selectedDayLunarInfo: LunarDayInfo = LunarAstronomer.getLunarInfo(LunarAstronomer.today()),
     val upcomingMajorPhases: List<MajorPhaseMilestone> = emptyList(),
     val notesByDate: Map<String, List<CalendarNote>> = emptyMap(),
+
+    // Clock State
+    val clockSubTab: ClockSubTab = ClockSubTab.WORLD_CLOCK,
+    val is24HourFormat: Boolean = true,
 
     // Calculator State
     val calculatorMode: CalculatorMode = CalculatorMode.SCIENTIFIC,
@@ -90,7 +101,6 @@ class SeleniaViewModel : ViewModel() {
         val lunarInfo = LunarAstronomer.getLunarInfo(today)
         val upcoming = LunarAstronomer.getUpcomingMajorPhases(today, count = 4)
 
-        // Seed helpful initial astronomical notes on upcoming major phases so the calendar feels alive immediately
         val initialNotes = mutableMapOf<String, List<CalendarNote>>()
         upcoming.firstOrNull { it.phaseType == MoonPhaseType.FULL_MOON }?.let { fullMoon ->
             val key = fullMoon.date.toStorageKey()
@@ -115,7 +125,6 @@ class SeleniaViewModel : ViewModel() {
             )
         }
 
-        // Seed 2 example calculations showing lunar + math capabilities
         val initialHistory = listOf(
             CalculationRecord(
                 id = 1L,
@@ -147,6 +156,14 @@ class SeleniaViewModel : ViewModel() {
 
     fun navigateTo(destination: AppDestination) {
         _uiState.update { it.copy(currentDestination = destination) }
+    }
+
+    fun selectClockSubTab(subTab: ClockSubTab) {
+        _uiState.update { it.copy(clockSubTab = subTab) }
+    }
+
+    fun toggle24HourFormat() {
+        _uiState.update { it.copy(is24HourFormat = !it.is24HourFormat) }
     }
 
     fun selectDate(date: SimpleDate) {
