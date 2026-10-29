@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,9 +55,29 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+// Precomputed 8-tick unit-circle trig table for 3D Clock Icon
+private val CLOCK_ICON_COS = FloatArray(8) { i -> cos(i * (Math.PI / 4.0)).toFloat() }
+private val CLOCK_ICON_SIN = FloatArray(8) { i -> sin(i * (Math.PI / 4.0)).toFloat() }
+
+// Precomputed 4-cardinal unit vectors for SeleniaBrandEmblem
+private val CARDINAL_COS = floatArrayOf(1f, 0f, -1f, 0f)
+private val CARDINAL_SIN = floatArrayOf(0f, 1f, 0f, -1f)
+
+// Precomputed 28-step unit-circle chord lookup table for MoonPhaseBadgeIcon:
+// Eliminates 58 sqrt() calls per badge draw pass.
+private const val BADGE_TERMINATOR_STEPS = 28
+private val BADGE_UNIT_T = FloatArray(BADGE_TERMINATOR_STEPS + 1) { i ->
+    -1f + 2f * (i.toFloat() / BADGE_TERMINATOR_STEPS)
+}
+private val BADGE_UNIT_HALF_CHORD = FloatArray(BADGE_TERMINATOR_STEPS + 1) { i ->
+    val t = BADGE_UNIT_T[i]
+    sqrt((1f - t * t).coerceAtLeast(0f))
+}
+
 /**
  * Custom vector emblem for the Selenia top header:
  * Combines a golden celestial crescent, astrolabe compass ring, and 4-point star sparkle.
+ * Uses zero-allocation cached Path instances inside Canvas.
  */
 @Composable
 fun SeleniaBrandEmblem(
@@ -65,6 +86,10 @@ fun SeleniaBrandEmblem(
     primaryColor: Color = Color(0xFFFFD54F),
     secondaryColor: Color = Color(0xFF4DD0E1)
 ) {
+    val crescentPath = remember { Path() }
+    val cutoutPath = remember { Path() }
+    val starPath = remember { Path() }
+
     Box(
         modifier = modifier
             .size(size)
@@ -104,15 +129,15 @@ fun SeleniaBrandEmblem(
                 style = Stroke(width = w * 0.045f)
             )
 
-            // 4 cardinal ticks
+            // 4 cardinal ticks (zero trig calls via precomputed unit vectors)
             val tickInner = r * 0.84f
             val tickOuter = r * 1.06f
+            val tickColor = primaryColor.copy(alpha = 0.65f)
             for (i in 0 until 4) {
-                val angle = i * (Math.PI / 2.0)
-                val cosA = cos(angle).toFloat()
-                val sinA = sin(angle).toFloat()
+                val cosA = CARDINAL_COS[i]
+                val sinA = CARDINAL_SIN[i]
                 drawLine(
-                    color = primaryColor.copy(alpha = 0.65f),
+                    color = tickColor,
                     start = Offset(cx + cosA * tickInner, cy + sinA * tickInner),
                     end = Offset(cx + cosA * tickOuter, cy + sinA * tickOuter),
                     strokeWidth = w * 0.05f,
@@ -120,23 +145,21 @@ fun SeleniaBrandEmblem(
                 )
             }
 
-            // Sculpted crescent moon path
-            val crescentPath = Path().apply {
-                val outerR = r * 0.68f
-                val innerR = r * 0.54f
-                addOval(Rect(cx - outerR, cy - outerR, cx + outerR, cy + outerR))
-                val cutoutPath = Path().apply {
-                    addOval(
-                        Rect(
-                            cx - innerR + outerR * 0.36f,
-                            cy - innerR - outerR * 0.10f,
-                            cx + innerR + outerR * 0.36f,
-                            cy + innerR - outerR * 0.10f
-                        )
-                    )
-                }
-                op(this, cutoutPath, PathOperation.Difference)
-            }
+            // Sculpted crescent moon path (reusing cached Path objects)
+            val outerR = r * 0.68f
+            val innerR = r * 0.54f
+            crescentPath.reset()
+            cutoutPath.reset()
+            crescentPath.addOval(Rect(cx - outerR, cy - outerR, cx + outerR, cy + outerR))
+            cutoutPath.addOval(
+                Rect(
+                    cx - innerR + outerR * 0.36f,
+                    cy - innerR - outerR * 0.10f,
+                    cx + innerR + outerR * 0.36f,
+                    cy + innerR - outerR * 0.10f
+                )
+            )
+            crescentPath.op(crescentPath, cutoutPath, PathOperation.Difference)
             drawPath(
                 path = crescentPath,
                 brush = Brush.linearGradient(
@@ -148,14 +171,13 @@ fun SeleniaBrandEmblem(
             val sx = cx + r * 0.30f
             val sy = cy - r * 0.24f
             val sr = r * 0.22f
-            val starPath = Path().apply {
-                moveTo(sx, sy - sr)
-                quadraticTo(sx + sr * 0.22f, sy - sr * 0.22f, sx + sr, sy)
-                quadraticTo(sx + sr * 0.22f, sy + sr * 0.22f, sx, sy + sr)
-                quadraticTo(sx - sr * 0.22f, sy + sr * 0.22f, sx - sr, sy)
-                quadraticTo(sx - sr * 0.22f, sy - sr * 0.22f, sx, sy - sr)
-                close()
-            }
+            starPath.reset()
+            starPath.moveTo(sx, sy - sr)
+            starPath.quadraticTo(sx + sr * 0.22f, sy - sr * 0.22f, sx + sr, sy)
+            starPath.quadraticTo(sx + sr * 0.22f, sy + sr * 0.22f, sx, sy + sr)
+            starPath.quadraticTo(sx - sr * 0.22f, sy + sr * 0.22f, sx - sr, sy)
+            starPath.quadraticTo(sx - sr * 0.22f, sy - sr * 0.22f, sx, sy - sr)
+            starPath.close()
             drawPath(path = starPath, color = secondaryColor)
         }
     }
@@ -165,7 +187,7 @@ fun SeleniaBrandEmblem(
  * 3D Multi-Color Polychromatic Icon for the 5 main modules:
  * Calendario, Luna, Reloj, Calculadora, and Estudio de Colores.
  * Renders depth shadow, 3-stop volumetric gradients, top-left specular glass reflection,
- * and bespoke 3D internal geometry per module.
+ * and bespoke 3D internal geometry per module with zero per-frame Path/List allocations.
  */
 @Composable
 fun SeleniaModule3DIcon(
@@ -176,10 +198,21 @@ fun SeleniaModule3DIcon(
     customAccent: Color? = null
 ) {
     val alphaScale = if (selected) 1f else 0.82f
+    val reusablePathA = remember { Path() }
+    val reusablePathB = remember { Path() }
+    val reusablePathC = remember { Path() }
+
     Canvas(modifier = modifier.size(size)) {
         when (destination) {
             AppDestination.CALENDAR -> draw3DCalendarIcon(alphaScale, selected, customAccent)
-            AppDestination.MOON_OBSERVATORY -> draw3DMoonIcon(alphaScale, selected, customAccent)
+            AppDestination.MOON_OBSERVATORY -> draw3DMoonIcon(
+                alpha = alphaScale,
+                selected = selected,
+                customAccent = customAccent,
+                crescentPath = reusablePathA,
+                cutoutPath = reusablePathB,
+                starPath = reusablePathC
+            )
             AppDestination.CLOCK -> draw3DClockIcon(alphaScale, selected, customAccent)
             AppDestination.CALCULATOR -> draw3DCalculatorIcon(alphaScale, selected, customAccent)
             AppDestination.COLORS -> draw3DColorStudioIcon(alphaScale, selected, customAccent)
@@ -223,6 +256,7 @@ private fun DrawScope.draw3DCalendarIcon(
     val topAccent = customAccent ?: Color(0xFFFF5252) // Coral Ruby
     val bodyGold = Color(0xFFFFD54F)
     val bodyCyan = Color(0xFF4DD0E1)
+    val bodyViolet = Color(0xFFB388FF)
 
     // 1. 3D Drop Shadow base
     drawRoundRect(
@@ -262,32 +296,38 @@ private fun DrawScope.draw3DCalendarIcon(
         cornerRadius = CornerRadius(w * 0.18f, w * 0.18f)
     )
 
-    // 4. Metallic 3D Binder Rings
-    val ringPositions = listOf(w * 0.30f, w * 0.70f)
-    for (rx in ringPositions) {
+    // 4. Metallic 3D Binder Rings (primitive loop without list allocation)
+    val ringBrush = Brush.verticalGradient(
+        colors = listOf(Color.White.copy(alpha = alpha), bodyGold.copy(alpha = alpha))
+    )
+    for (i in 0..1) {
+        val rx = if (i == 0) w * 0.30f else w * 0.70f
         drawRoundRect(
-            brush = Brush.verticalGradient(
-                colors = listOf(Color.White.copy(alpha = alpha), bodyGold.copy(alpha = alpha))
-            ),
+            brush = ringBrush,
             topLeft = Offset(rx - w * 0.045f, h * 0.06f),
             size = Size(w * 0.09f, h * 0.16f),
             cornerRadius = CornerRadius(w * 0.045f, w * 0.045f)
         )
     }
 
-    // 5. Polychromatic Calendar Grid Dots + Mini Golden Moon
-    val dotCols = listOf(w * 0.26f, w * 0.43f, w * 0.60f)
-    val dotRows = listOf(h * 0.50f, h * 0.66f)
-    for ((rIdx, ry) in dotRows.withIndex()) {
-        for ((cIdx, cx) in dotCols.withIndex()) {
+    // 5. Polychromatic Calendar Grid Dots + Mini Golden Moon (primitive loops without list/iterator allocations)
+    val dotRadius = w * 0.045f
+    for (rIdx in 0..1) {
+        val ry = if (rIdx == 0) h * 0.50f else h * 0.66f
+        for (cIdx in 0..2) {
+            val cx = when (cIdx) {
+                0 -> w * 0.26f
+                1 -> w * 0.43f
+                else -> w * 0.60f
+            }
             val dotColor = when ((rIdx + cIdx) % 3) {
                 0 -> bodyCyan
                 1 -> bodyGold
-                else -> Color(0xFFB388FF)
+                else -> bodyViolet
             }
             drawCircle(
                 color = dotColor.copy(alpha = alpha * 0.9f),
-                radius = w * 0.045f,
+                radius = dotRadius,
                 center = Offset(cx, ry)
             )
         }
@@ -322,7 +362,10 @@ private fun DrawScope.draw3DCalendarIcon(
 private fun DrawScope.draw3DMoonIcon(
     alpha: Float,
     selected: Boolean,
-    customAccent: Color?
+    customAccent: Color?,
+    crescentPath: Path,
+    cutoutPath: Path,
+    starPath: Path
 ) {
     val w = size.width
     val h = size.height
@@ -362,23 +405,22 @@ private fun DrawScope.draw3DMoonIcon(
         center = Offset(cx, cy)
     )
 
-    // 3. Sculpted 3D Golden-Amber Crescent with Specular Highlight
-    val crescentPath = Path().apply {
-        val outerR = r * 0.86f
-        val innerR = r * 0.68f
-        addOval(Rect(cx - outerR, cy - outerR, cx + outerR, cy + outerR))
-        val cutout = Path().apply {
-            addOval(
-                Rect(
-                    cx - innerR + outerR * 0.38f,
-                    cy - innerR - outerR * 0.12f,
-                    cx + innerR + outerR * 0.38f,
-                    cy + innerR - outerR * 0.12f
-                )
-            )
-        }
-        op(this, cutout, PathOperation.Difference)
-    }
+    // 3. Sculpted 3D Golden-Amber Crescent with Specular Highlight (zero allocation via cached Paths)
+    val outerR = r * 0.86f
+    val innerR = r * 0.68f
+    crescentPath.reset()
+    cutoutPath.reset()
+    crescentPath.addOval(Rect(cx - outerR, cy - outerR, cx + outerR, cy + outerR))
+    cutoutPath.addOval(
+        Rect(
+            cx - innerR + outerR * 0.38f,
+            cy - innerR - outerR * 0.12f,
+            cx + innerR + outerR * 0.38f,
+            cy + innerR - outerR * 0.12f
+        )
+    )
+    crescentPath.op(crescentPath, cutoutPath, PathOperation.Difference)
+
     drawPath(
         path = crescentPath,
         brush = Brush.linearGradient(
@@ -408,14 +450,13 @@ private fun DrawScope.draw3DMoonIcon(
     val sx = cx + r * 0.36f
     val sy = cy - r * 0.28f
     val sr = r * 0.26f
-    val starPath = Path().apply {
-        moveTo(sx, sy - sr)
-        quadraticTo(sx + sr * 0.22f, sy - sr * 0.22f, sx + sr, sy)
-        quadraticTo(sx + sr * 0.22f, sy + sr * 0.22f, sx, sy + sr)
-        quadraticTo(sx - sr * 0.22f, sy + sr * 0.22f, sx - sr, sy)
-        quadraticTo(sx - sr * 0.22f, sy - sr * 0.22f, sx, sy - sr)
-        close()
-    }
+    starPath.reset()
+    starPath.moveTo(sx, sy - sr)
+    starPath.quadraticTo(sx + sr * 0.22f, sy - sr * 0.22f, sx + sr, sy)
+    starPath.quadraticTo(sx + sr * 0.22f, sy + sr * 0.22f, sx, sy + sr)
+    starPath.quadraticTo(sx - sr * 0.22f, sy + sr * 0.22f, sx - sr, sy)
+    starPath.quadraticTo(sx - sr * 0.22f, sy - sr * 0.22f, sx, sy - sr)
+    starPath.close()
     drawPath(
         path = starPath,
         brush = Brush.radialGradient(
@@ -487,16 +528,19 @@ private fun DrawScope.draw3DClockIcon(
         center = Offset(cx, cy)
     )
 
-    // 4. 8 Cardinal & Intercardinal Ticks
+    // 4. 8 Cardinal & Intercardinal Ticks using precomputed CLOCK_ICON_COS/SIN tables
+    val cardinalColor = handGold.copy(alpha = alpha)
+    val intercardinalColor = bezelCyan.copy(alpha = alpha)
     for (i in 0 until 8) {
-        val angle = i * (Math.PI / 4.0)
         val isCardinal = i % 2 == 0
         val inner = if (isCardinal) r * 0.72f else r * 0.80f
         val outer = r * 0.90f
+        val cosA = CLOCK_ICON_COS[i]
+        val sinA = CLOCK_ICON_SIN[i]
         drawLine(
-            color = (if (isCardinal) handGold else bezelCyan).copy(alpha = alpha),
-            start = Offset(cx + cos(angle).toFloat() * inner, cy + sin(angle).toFloat() * inner),
-            end = Offset(cx + cos(angle).toFloat() * outer, cy + sin(angle).toFloat() * outer),
+            color = if (isCardinal) cardinalColor else intercardinalColor,
+            start = Offset(cx + cosA * inner, cy + sinA * inner),
+            end = Offset(cx + cosA * outer, cy + sinA * outer),
             strokeWidth = if (isCardinal) w * 0.05f else w * 0.035f,
             cap = StrokeCap.Round
         )
@@ -505,7 +549,7 @@ private fun DrawScope.draw3DClockIcon(
     // 5. 3-Color Watch Hands (Gold Hour, Cyan Minute, Ruby Second + Center Jewel)
     // Hour hand (pointing ~10 o'clock)
     drawLine(
-        color = handGold.copy(alpha = alpha),
+        color = cardinalColor,
         start = Offset(cx, cy),
         end = Offset(cx - r * 0.36f, cy - r * 0.26f),
         strokeWidth = w * 0.07f,
@@ -513,7 +557,7 @@ private fun DrawScope.draw3DClockIcon(
     )
     // Minute hand (pointing ~2 o'clock)
     drawLine(
-        color = bezelCyan.copy(alpha = alpha),
+        color = intercardinalColor,
         start = Offset(cx, cy),
         end = Offset(cx + r * 0.45f, cy - r * 0.34f),
         strokeWidth = w * 0.055f,
@@ -544,8 +588,8 @@ private fun DrawScope.draw3DClockIcon(
         brush = Brush.linearGradient(
             colors = listOf(
                 Color.White.copy(alpha = if (selected) 0.85f else 0.5f),
-                bezelCyan.copy(alpha = alpha),
-                handGold.copy(alpha = alpha)
+                intercardinalColor,
+                cardinalColor
             )
         ),
         radius = r,
@@ -750,6 +794,7 @@ private fun DrawScope.draw3DColorStudioIcon(
  * High-precision astronomical medallion for any [MoonPhaseType].
  * Replaces flat OS text emojis (🌑..🌘) with a crisp vector-styled lunar disc,
  * terminator curve, subtle crater texture, and outer bezel ring.
+ * Uses precomputed chord tables and a cached Path to ensure 0 allocations during draw passes.
  */
 @Composable
 fun MoonPhaseBadgeIcon(
@@ -770,6 +815,8 @@ fun MoonPhaseBadgeIcon(
         MoonPhaseType.LAST_QUARTER -> 0.75f
         MoonPhaseType.WANING_CRESCENT -> 0.875f
     }
+
+    val reusablePath = remember { Path() }
 
     Canvas(modifier = modifier.size(size)) {
         val radius = this.size.minDimension / 2f * 0.86f
@@ -807,30 +854,27 @@ fun MoonPhaseBadgeIcon(
                     center = center
                 )
             } else {
-                val path = Path()
-                val steps = 28
+                reusablePath.reset()
                 val k = 2f * illumination - 1f
-                for (i in 0..steps) {
-                    val t = -1f + 2f * (i.toFloat() / steps)
-                    val y = center.y + t * radius
-                    val halfChord = sqrt((1f - t * t).coerceAtLeast(0f)) * radius
+                for (i in 0..BADGE_TERMINATOR_STEPS) {
+                    val y = center.y + BADGE_UNIT_T[i] * radius
+                    val halfChord = BADGE_UNIT_HALF_CHORD[i] * radius
                     val xLimb = if (litOnRight) center.x + halfChord else center.x - halfChord
-                    if (i == 0) path.moveTo(xLimb, y) else path.lineTo(xLimb, y)
+                    if (i == 0) reusablePath.moveTo(xLimb, y) else reusablePath.lineTo(xLimb, y)
                 }
-                for (i in steps downTo 0) {
-                    val t = -1f + 2f * (i.toFloat() / steps)
-                    val y = center.y + t * radius
-                    val halfChord = sqrt((1f - t * t).coerceAtLeast(0f)) * radius
+                for (i in BADGE_TERMINATOR_STEPS downTo 0) {
+                    val y = center.y + BADGE_UNIT_T[i] * radius
+                    val halfChord = BADGE_UNIT_HALF_CHORD[i] * radius
                     val xTerm = if (litOnRight) {
                         center.x - k * halfChord
                     } else {
                         center.x + k * halfChord
                     }
-                    path.lineTo(xTerm, y)
+                    reusablePath.lineTo(xTerm, y)
                 }
-                path.close()
+                reusablePath.close()
                 drawPath(
-                    path = path,
+                    path = reusablePath,
                     brush = Brush.linearGradient(
                         colors = listOf(Color(0xFFFFF8E1), litColor)
                     )

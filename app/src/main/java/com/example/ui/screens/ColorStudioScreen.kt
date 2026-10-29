@@ -1083,9 +1083,23 @@ private fun GradientRendererCanvas(
         }
     }
 
-    val meshNodes = remember(stops) {
+    val sweepColors = remember(composeColors) {
+        composeColors + composeColors.first()
+    }
+
+    val meshBaseBg = remember(stops) {
+        val nodes = ColorHarmonyEngine.buildMeshNodes(stops)
+        nodes.lastOrNull()?.let { Color(it.rgb.r, it.rgb.g, it.rgb.b) } ?: Color(0xFF0B1026)
+    }
+
+    val meshNodeColorStops = remember(stops) {
         ColorHarmonyEngine.buildMeshNodes(stops).map {
-            Color(it.rgb.r, it.rgb.g, it.rgb.b)
+            val nodeColor = Color(it.rgb.r, it.rgb.g, it.rgb.b)
+            listOf(
+                nodeColor.copy(alpha = 0.88f),
+                nodeColor.copy(alpha = 0.35f),
+                Color.Transparent
+            )
         }
     }
 
@@ -1127,7 +1141,6 @@ private fun GradientRendererCanvas(
             }
 
             GradientStyleType.SWEEP -> {
-                val sweepColors = composeColors + composeColors.first()
                 drawRect(
                     brush = Brush.sweepGradient(
                         colors = sweepColors,
@@ -1138,27 +1151,22 @@ private fun GradientRendererCanvas(
 
             GradientStyleType.MESH -> {
                 // Multi-point organic 2D Mesh Gradient using layered radial fields
-                drawRect(color = meshNodes.lastOrNull() ?: Color(0xFF0B1026))
-
-                val anchorPoints = listOf(
-                    Offset(w * 0.15f, h * 0.18f),
-                    Offset(w * 0.85f, h * 0.20f),
-                    Offset(w * 0.20f, h * 0.85f),
-                    Offset(w * 0.82f, h * 0.80f),
-                    Offset(w * focalX, h * focalY),
-                    Offset(w * (1f - focalX), h * (1f - focalY))
-                )
+                drawRect(color = meshBaseBg)
 
                 val baseRadius = kotlin.math.max(w, h) * 0.68f * radiusFactor
-                meshNodes.forEachIndexed { idx, nodeColor ->
-                    val pt = anchorPoints.getOrElse(idx) { Offset(w * 0.5f, h * 0.5f) }
+                for (idx in meshNodeColorStops.indices) {
+                    val pt = when (idx) {
+                        0 -> Offset(w * 0.15f, h * 0.18f)
+                        1 -> Offset(w * 0.85f, h * 0.20f)
+                        2 -> Offset(w * 0.20f, h * 0.85f)
+                        3 -> Offset(w * 0.82f, h * 0.80f)
+                        4 -> Offset(w * focalX, h * focalY)
+                        5 -> Offset(w * (1f - focalX), h * (1f - focalY))
+                        else -> Offset(w * 0.5f, h * 0.5f)
+                    }
                     drawRect(
                         brush = Brush.radialGradient(
-                            colors = listOf(
-                                nodeColor.copy(alpha = 0.88f),
-                                nodeColor.copy(alpha = 0.35f),
-                                Color.Transparent
-                            ),
+                            colors = meshNodeColorStops[idx],
                             center = pt,
                             radius = (baseRadius * if (idx == 4) 0.9f else 0.78f).coerceAtLeast(20f)
                         )

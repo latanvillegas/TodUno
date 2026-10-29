@@ -249,6 +249,7 @@ data class SeleniaUiState(
 
 class SeleniaViewModel : ViewModel() {
 
+    private val idCounter = java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis())
     private val _uiState = MutableStateFlow(createInitialState())
     val uiState: StateFlow<SeleniaUiState> = _uiState.asStateFlow()
 
@@ -553,7 +554,7 @@ class SeleniaViewModel : ViewModel() {
             val key = current.selectedDate.toStorageKey()
             val existing = current.notesByDate[key].orEmpty()
             val newNote = CalendarNote(
-                id = System.currentTimeMillis(),
+                id = idCounter.incrementAndGet(),
                 date = current.selectedDate,
                 title = cleanTitle,
                 category = category.ifBlank { "Nota" }
@@ -627,7 +628,7 @@ class SeleniaViewModel : ViewModel() {
                 onSuccess = { num ->
                     val formatted = ScientificCalculatorEngine.formatNumber(num)
                     val record = CalculationRecord(
-                        id = System.currentTimeMillis(),
+                        id = idCounter.incrementAndGet(),
                         expression = current.expression,
                         result = formatted,
                         badgeLabel = customBadge
@@ -652,7 +653,7 @@ class SeleniaViewModel : ViewModel() {
             val cycles = currentVal / LunarAstronomer.SYNODIC_MONTH_DAYS
             val formatted = ScientificCalculatorEngine.formatNumber(cycles)
             val record = CalculationRecord(
-                id = System.currentTimeMillis(),
+                id = idCounter.incrementAndGet(),
                 expression = "${ScientificCalculatorEngine.formatNumber(currentVal)} días ÷ 29.5306",
                 result = formatted,
                 badgeLabel = "Ciclos Lunares"
@@ -672,7 +673,7 @@ class SeleniaViewModel : ViewModel() {
             val days = currentVal * LunarAstronomer.SYNODIC_MONTH_DAYS
             val formatted = ScientificCalculatorEngine.formatNumber(days)
             val record = CalculationRecord(
-                id = System.currentTimeMillis(),
+                id = idCounter.incrementAndGet(),
                 expression = "${ScientificCalculatorEngine.formatNumber(currentVal)} × 29.5306 d",
                 result = formatted,
                 badgeLabel = "Días en ${ScientificCalculatorEngine.formatNumber(currentVal)} lunas"

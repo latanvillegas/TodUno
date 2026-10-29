@@ -159,19 +159,22 @@ fun ClockScreen(
         }
     }
 
-    // Stopwatch state
+    // Stopwatch state: wall-clock anchored so background tab switches need 0 ticks
     var stopwatchRunning by rememberSaveable { mutableStateOf(false) }
     var stopwatchAccumulatedMs by rememberSaveable { mutableLongStateOf(0L) }
     var stopwatchLastStartMs by rememberSaveable { mutableLongStateOf(0L) }
     var stopwatchDisplayMs by remember { mutableLongStateOf(0L) }
     val stopwatchLaps = remember { mutableStateListOf<StopwatchLap>() }
 
-    LaunchedEffect(stopwatchRunning, stopwatchAccumulatedMs, stopwatchLastStartMs, lifecycleOwner) {
+    LaunchedEffect(stopwatchRunning, stopwatchAccumulatedMs, stopwatchLastStartMs, uiState.clockSubTab, lifecycleOwner) {
         if (stopwatchRunning) {
-            lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                while (stopwatchRunning) {
-                    stopwatchDisplayMs = stopwatchAccumulatedMs + (System.currentTimeMillis() - stopwatchLastStartMs)
-                    delay(33L) // ~30 fps digital readout while keeping wall-clock accuracy
+            // Only tick at ~30 fps when the STOPWATCH sub-tab is actually visible on screen
+            if (uiState.clockSubTab == ClockSubTab.STOPWATCH) {
+                lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    while (stopwatchRunning) {
+                        stopwatchDisplayMs = stopwatchAccumulatedMs + (System.currentTimeMillis() - stopwatchLastStartMs)
+                        delay(33L)
+                    }
                 }
             }
         } else {
@@ -186,17 +189,20 @@ fun ClockScreen(
     var timerEndTargetMs by rememberSaveable { mutableLongStateOf(0L) }
     var timerFinishedAlert by rememberSaveable { mutableStateOf(false) }
 
-    LaunchedEffect(timerRunning, timerEndTargetMs, lifecycleOwner) {
+    LaunchedEffect(timerRunning, timerEndTargetMs, uiState.clockSubTab, lifecycleOwner) {
         if (timerRunning) {
+            val tickDelayMs = if (uiState.clockSubTab == ClockSubTab.TIMER) 66L else 500L
             lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 while (timerRunning) {
                     val left = (timerEndTargetMs - System.currentTimeMillis()).coerceAtLeast(0L)
-                    timerRemainingMs = left
+                    if (uiState.clockSubTab == ClockSubTab.TIMER || left == 0L) {
+                        timerRemainingMs = left
+                    }
                     if (left == 0L) {
                         timerRunning = false
                         timerFinishedAlert = true
                     }
-                    delay(50L)
+                    delay(tickDelayMs)
                 }
             }
         }
@@ -293,7 +299,12 @@ fun ClockScreen(
                         }
                     },
                     onLap = {
-                        val currentTotal = stopwatchDisplayMs
+                        val currentTotal = if (stopwatchRunning) {
+                            stopwatchAccumulatedMs + (System.currentTimeMillis() - stopwatchLastStartMs)
+                        } else {
+                            stopwatchAccumulatedMs
+                        }
+                        stopwatchDisplayMs = currentTotal
                         val previousTotal = stopwatchLaps.firstOrNull()?.totalElapsedMs ?: 0L
                         val lapDiff = (currentTotal - previousTotal).coerceAtLeast(0L)
                         stopwatchLaps.add(

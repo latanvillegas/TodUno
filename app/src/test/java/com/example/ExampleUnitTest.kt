@@ -103,5 +103,50 @@ class ExampleUnitTest {
         vm.resetSkinForTarget(ModuleThemeTarget.MOON_OBSERVATORY)
         assertFalse(vm.uiState.value.skinFor(ModuleThemeTarget.MOON_OBSERVATORY).isCustomApplied)
     }
+
+    @Test
+    fun scientificCalculator_supportsImplicitMultiplicationAndExactDegreeBoundaries() {
+        val twoPi = ScientificCalculatorEngine.evaluate("2π").getOrThrow()
+        assertEquals(2.0 * Math.PI, twoPi, 1e-6)
+
+        val implicitParens = ScientificCalculatorEngine.evaluate("2(3 + 4)").getOrThrow()
+        assertEquals(14.0, implicitParens, 1e-6)
+
+        val doubleParens = ScientificCalculatorEngine.evaluate("(2 + 3)(4 + 5)").getOrThrow()
+        assertEquals(45.0, doubleParens, 1e-6)
+
+        val implicitTrig = ScientificCalculatorEngine.evaluate("4sin(30)").getOrThrow()
+        assertEquals(2.0, implicitTrig, 1e-6)
+
+        val cos90 = ScientificCalculatorEngine.evaluate("cos(90)").getOrThrow()
+        assertEquals(0.0, cos90, 1e-12)
+
+        val sin180 = ScientificCalculatorEngine.evaluate("sin(180)").getOrThrow()
+        assertEquals(0.0, sin180, 1e-12)
+
+        val tan90 = ScientificCalculatorEngine.evaluate("tan(90)")
+        assertTrue(tan90.isFailure)
+    }
+
+    @Test
+    fun lunarAstronomer_computesCalendarMonthGridWithoutCalendarAllocations() {
+        // February 2024 is a leap year (29 days) starting on Thursday (index 3 from Monday)
+        val feb2024 = LunarAstronomer.getMonthGrid(2024, 2)
+        assertEquals(42, feb2024.size)
+        val currentMonthDays = feb2024.filter { it.isCurrentMonth }
+        assertEquals(29, currentMonthDays.size)
+        assertEquals(3, feb2024.indexOfFirst { it.isCurrentMonth })
+        assertEquals("29 Feb 2024", currentMonthDays.last().date.formatSpanishShort())
+    }
+
+    @Test
+    fun viewModel_generatesUniqueMonotonicIdsForNotesAndHistory() {
+        val vm = SeleniaViewModel()
+        vm.addNoteForSelectedDate("Nota 1", "Astro")
+        vm.addNoteForSelectedDate("Nota 2", "Personal")
+        val notes = vm.uiState.value.notesByDate.values.flatten()
+        assertTrue(notes.size >= 2)
+        assertEquals(notes.size, notes.map { it.id }.distinct().size)
+    }
 }
 

@@ -95,9 +95,35 @@ class MainActivity : ComponentActivity() {
 private data class NavItemSpec(
     val destination: AppDestination,
     val labelRes: Int,
-    val selectedIcon: ImageVector,
-    val unselectedIcon: ImageVector,
     val testTag: String
+)
+
+private val NAV_ITEMS = listOf(
+    NavItemSpec(
+        destination = AppDestination.CALENDAR,
+        labelRes = R.string.nav_calendar,
+        testTag = "nav_tab_calendar"
+    ),
+    NavItemSpec(
+        destination = AppDestination.MOON_OBSERVATORY,
+        labelRes = R.string.nav_moon,
+        testTag = "nav_tab_moon"
+    ),
+    NavItemSpec(
+        destination = AppDestination.CLOCK,
+        labelRes = R.string.nav_clock,
+        testTag = "nav_tab_clock"
+    ),
+    NavItemSpec(
+        destination = AppDestination.CALCULATOR,
+        labelRes = R.string.nav_calculator,
+        testTag = "nav_tab_calculator"
+    ),
+    NavItemSpec(
+        destination = AppDestination.COLORS,
+        labelRes = R.string.nav_colors,
+        testTag = "nav_tab_colors"
+    )
 )
 
 /**
@@ -169,44 +195,6 @@ fun SeleniaApp(
         }
     }
 
-    val navItems = listOf(
-        NavItemSpec(
-            destination = AppDestination.CALENDAR,
-            labelRes = R.string.nav_calendar,
-            selectedIcon = Icons.Filled.CalendarMonth,
-            unselectedIcon = Icons.Outlined.CalendarMonth,
-            testTag = "nav_tab_calendar"
-        ),
-        NavItemSpec(
-            destination = AppDestination.MOON_OBSERVATORY,
-            labelRes = R.string.nav_moon,
-            selectedIcon = Icons.Filled.NightlightRound,
-            unselectedIcon = Icons.Outlined.NightlightRound,
-            testTag = "nav_tab_moon"
-        ),
-        NavItemSpec(
-            destination = AppDestination.CLOCK,
-            labelRes = R.string.nav_clock,
-            selectedIcon = Icons.Filled.AccessTime,
-            unselectedIcon = Icons.Outlined.AccessTime,
-            testTag = "nav_tab_clock"
-        ),
-        NavItemSpec(
-            destination = AppDestination.CALCULATOR,
-            labelRes = R.string.nav_calculator,
-            selectedIcon = Icons.Filled.Calculate,
-            unselectedIcon = Icons.Outlined.Calculate,
-            testTag = "nav_tab_calculator"
-        ),
-        NavItemSpec(
-            destination = AppDestination.COLORS,
-            labelRes = R.string.nav_colors,
-            selectedIcon = Icons.Filled.Palette,
-            unselectedIcon = Icons.Outlined.Palette,
-            testTag = "nav_tab_colors"
-        )
-    )
-
     val activeModuleSkin = uiState.skinForDestination(uiState.currentDestination)
 
     ModuleThemedSurface(skin = activeModuleSkin) {
@@ -227,7 +215,7 @@ fun SeleniaApp(
                         containerColor = MaterialTheme.colorScheme.surface,
                         modifier = Modifier.fillMaxHeight()
                     ) {
-                        navItems.forEach { item ->
+                        NAV_ITEMS.forEach { item ->
                             val selected = uiState.currentDestination == item.destination
                             val itemSkin = uiState.skinForDestination(item.destination)
                             val customAccent = if (itemSkin?.isCustomApplied == true) {
@@ -281,7 +269,7 @@ fun SeleniaApp(
                             containerColor = MaterialTheme.colorScheme.surface,
                             tonalElevation = 8.dp
                         ) {
-                            navItems.forEach { item ->
+                            NAV_ITEMS.forEach { item ->
                                 val selected = uiState.currentDestination == item.destination
                                 val itemSkin = uiState.skinForDestination(item.destination)
                                 val customAccent = if (itemSkin?.isCustomApplied == true) {

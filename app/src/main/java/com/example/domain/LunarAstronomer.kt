@@ -333,20 +333,23 @@ data class SimpleDate(
     fun toStorageKey(): String = storageKey
 
     fun formatSpanishLong(): String {
-        val monthNames = arrayOf(
-            "enero", "febrero", "marzo", "abril", "mayo", "junio",
-            "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
-        )
         val dayOfWeek = LunarAstronomer.getDayOfWeekSpanish(year, month, day)
-        return "$dayOfWeek, $day de ${monthNames[(month - 1).coerceIn(0, 11)]} de $year"
+        return "$dayOfWeek, $day de ${MONTH_NAMES_LOWER[(month - 1).coerceIn(0, 11)]} de $year"
     }
 
     fun formatSpanishShort(): String {
-        val monthShort = arrayOf(
+        return "$day ${MONTH_NAMES_SHORT[(month - 1).coerceIn(0, 11)]} $year"
+    }
+
+    companion object {
+        private val MONTH_NAMES_LOWER = arrayOf(
+            "enero", "febrero", "marzo", "abril", "mayo", "junio",
+            "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+        )
+        private val MONTH_NAMES_SHORT = arrayOf(
             "Ene", "Feb", "Mar", "Abr", "May", "Jun",
             "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"
         )
-        return "$day ${monthShort[(month - 1).coerceIn(0, 11)]} $year"
     }
 }
 
@@ -465,11 +468,25 @@ object LunarAstronomer {
         "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"
     )
 
-    fun getDayOfWeekSpanish(year: Int, month: Int, day: Int): String {
-        // Pure Julian Day arithmetic: avoids allocating a Calendar object per date format call.
+    private fun getDayOfWeekIndexFromMonday(year: Int, month: Int, day: Int): Int {
+        // Pure Julian Day arithmetic: 0 = Monday .. 6 = Sunday
         val jdNoon = toJulianDay(year, month, day)
-        val idx = ((floor(jdNoon + 0.5).toLong() % 7L) + 7L).toInt() % 7
-        return WEEKDAY_NAMES_FROM_MONDAY[idx]
+        return (((floor(jdNoon + 0.5).toLong() % 7L) + 7L).toInt() % 7)
+    }
+
+    fun getDayOfWeekSpanish(year: Int, month: Int, day: Int): String {
+        return WEEKDAY_NAMES_FROM_MONDAY[getDayOfWeekIndexFromMonday(year, month, day)]
+    }
+
+    fun isLeapYear(year: Int): Boolean {
+        return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
+    }
+
+    fun daysInMonth(year: Int, month: Int): Int = when (month) {
+        1, 3, 5, 7, 8, 10, 12 -> 31
+        4, 6, 9, 11 -> 30
+        2 -> if (isLeapYear(year)) 29 else 28
+        else -> 30
     }
 
     private fun rawPhaseFractionForJd(jd: Double): Double {
@@ -569,13 +586,10 @@ object LunarAstronomer {
 
     /**
      * Generates a 42-cell (6 weeks, Monday-first) calendar grid for a given year and month (1..12).
+     * Uses pure Julian Day arithmetic without allocating Calendar instances.
      */
     fun getMonthGrid(year: Int, month: Int, today: SimpleDate = today()): List<CalendarDayCell> {
-        val cal = Calendar.getInstance()
-        cal.set(year, month - 1, 1, 12, 0, 0)
-        // Convert Sunday=1..Saturday=7 to Monday=0..Sunday=6
-        val dayOfWeek = cal.get(Calendar.DAY_OF_WEEK)
-        val leadingDays = if (dayOfWeek == Calendar.SUNDAY) 6 else dayOfWeek - Calendar.MONDAY
+        val leadingDays = getDayOfWeekIndexFromMonday(year, month, 1)
         val firstCellDate = addDays(SimpleDate(year, month, 1), -leadingDays)
 
         return (0 until 42).map { offset ->
@@ -593,11 +607,9 @@ object LunarAstronomer {
      * Returns the major lunar phase milestones occurring within a specific month.
      */
     fun getMonthMajorMilestones(year: Int, month: Int): List<MajorPhaseMilestone> {
-        val cal = Calendar.getInstance()
-        cal.set(year, month - 1, 1, 12, 0, 0)
-        val daysInMonth = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
-        val milestones = mutableListOf<MajorPhaseMilestone>()
-        for (day in 1..daysInMonth) {
+        val totalDays = daysInMonth(year, month)
+        val milestones = ArrayList<MajorPhaseMilestone>(4)
+        for (day in 1..totalDays) {
             val info = getLunarInfo(SimpleDate(year, month, day))
             if (info.isExactMajorPhaseDay) {
                 milestones.add(

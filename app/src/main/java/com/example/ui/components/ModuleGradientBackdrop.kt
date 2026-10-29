@@ -69,9 +69,18 @@ fun SkinGradientCanvas(
         raw
     }
 
-    val meshNodes = remember(stops, alphaIntensity) {
+    val sweepColors = remember(composeColors) {
+        composeColors + composeColors.first()
+    }
+
+    val meshNodeColorStops = remember(stops, alphaIntensity) {
         ColorHarmonyEngine.buildMeshNodes(stops).map {
-            Color(it.rgb.r, it.rgb.g, it.rgb.b).copy(alpha = alphaIntensity)
+            val nodeColor = Color(it.rgb.r, it.rgb.g, it.rgb.b).copy(alpha = alphaIntensity)
+            listOf(
+                nodeColor,
+                nodeColor.copy(alpha = alphaIntensity * 0.4f),
+                Color.Transparent
+            )
         }
     }
 
@@ -112,7 +121,6 @@ fun SkinGradientCanvas(
             }
 
             GradientStyleType.SWEEP -> {
-                val sweepColors = composeColors + composeColors.first()
                 drawRect(
                     brush = Brush.sweepGradient(
                         colors = sweepColors,
@@ -122,26 +130,22 @@ fun SkinGradientCanvas(
             }
 
             GradientStyleType.MESH -> {
-                val anchorPoints = listOf(
-                    Offset(w * 0.15f, h * 0.18f),
-                    Offset(w * 0.85f, h * 0.20f),
-                    Offset(w * 0.20f, h * 0.85f),
-                    Offset(w * 0.82f, h * 0.80f),
-                    Offset(w * focalX, h * focalY),
-                    Offset(w * (1f - focalX), h * (1f - focalY))
-                )
-                val baseRadius = max(w, h) * 0.72f * radiusFactor
-                meshNodes.forEachIndexed { idx, nodeColor ->
-                    val pt = anchorPoints.getOrElse(idx) { Offset(w * 0.5f, h * 0.5f) }
+                val baseRadius = (max(w, h) * 0.72f * radiusFactor).coerceAtLeast(20f)
+                for (idx in meshNodeColorStops.indices) {
+                    val pt = when (idx) {
+                        0 -> Offset(w * 0.15f, h * 0.18f)
+                        1 -> Offset(w * 0.85f, h * 0.20f)
+                        2 -> Offset(w * 0.20f, h * 0.85f)
+                        3 -> Offset(w * 0.82f, h * 0.80f)
+                        4 -> Offset(w * focalX, h * focalY)
+                        5 -> Offset(w * (1f - focalX), h * (1f - focalY))
+                        else -> Offset(w * 0.5f, h * 0.5f)
+                    }
                     drawRect(
                         brush = Brush.radialGradient(
-                            colors = listOf(
-                                nodeColor,
-                                nodeColor.copy(alpha = alphaIntensity * 0.4f),
-                                Color.Transparent
-                            ),
+                            colors = meshNodeColorStops[idx],
                             center = pt,
-                            radius = baseRadius.coerceAtLeast(20f)
+                            radius = baseRadius
                         )
                     )
                 }
