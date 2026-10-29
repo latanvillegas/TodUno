@@ -1,0 +1,50 @@
+<resources>
+    <string name="app_name">Selenia: Luna y Calc</string>
+    <string name="subtitle_observatory">Almanaque Lunar, Calendario y Calculadora</string>
+
+    <!-- Navigation -->
+    <string name="nav_calendar">Calendario</string>
+    <string name="nav_moon">Fases Lunares</string>
+    <string name="nav_calculator">Calculadora</string>
+
+    <!-- Calendar Screen -->
+    <string name="today_button">Hoy</string>
+    <string name="prev_month_desc">Mes anterior</string>
+    <string name="next_month_desc">Mes siguiente</string>
+    <string name="selected_day_details">Detalles del Día</string>
+    <string name="lunar_illumination_label">Iluminación</string>
+    <string name="lunar_age_label">Edad lunar</string>
+    <string name="days_unit">días</string>
+    <string name="send_day_to_calc">Usar día en Calculadora</string>
+    <string name="inspect_moon_phase">Ver en Observatorio Lunar</string>
+    <string name="month_lunar_milestones">Hitos Lunares del Mes</string>
+    <string name="astronomical_season_note">Efemérides y ciclo sinódico (29.53 días)</string>
+
+    <!-- Moon Screen -->
+    <string name="moon_observatory_title">Observatorio Lunar</string>
+    <string name="hemisphere_north">Hemisferio Norte</string>
+    <string name="hemisphere_south">Hemisferio Sur</string>
+    <string name="prev_day_desc">Día anterior</string>
+    <string name="next_day_desc">Día siguiente</string>
+    <string name="synodic_progress">Progreso del Ciclo Sinódico</string>
+    <string name="distance_earth_moon">Distancia Tierra-Luna</string>
+    <string name="zodiac_constellation">Tránsito Eclíptico</string>
+    <string name="upcoming_major_phases">Próximas 4 Fases Principales</string>
+    <string name="biorhythm_activity_title">Guía Tradicional del Ciclo</string>
+    <string name="jump_plus_7">+7 días</string>
+    <string name="jump_minus_7">-7 días</string>
+
+    <!-- Calculator Screen -->
+    <string name="calc_mode_standard">Científica</string>
+    <string name="calc_mode_dates">Fechas y Ciclos</string>
+    <string name="calc_history_title">Historial de Cálculos</string>
+    <string name="calc_history_empty">Tus operaciones matemáticas y lunares aparecerán aquí</string>
+    <string name="calc_clear_history">Limpiar</string>
+    <string name="calc_synodic_button">× Ciclo Lunar (29.53d)</string>
+    <string name="date_calc_title">Calculadora de Fechas y Lunas</string>
+    <string name="date_calc_base_date">Fecha base seleccionada</string>
+    <string name="date_calc_offset_days">Sumar o restar días</string>
+    <string name="date_calc_offset_synodic">Sumar ciclos lunares (29.53 d)</string>
+    <string name="date_calc_result_label">Fecha Resultante y Fase Lunar</string>
+    <string name="apply_to_calendar">Ir a esta fecha en el Calendario</string>
+</resources>

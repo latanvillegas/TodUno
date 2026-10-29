@@ -1,0 +1,6 @@
+{
+  "name": "Selenia: Luna y Calc",
+  "description": "Calendario astronómico, fases de la luna en tiempo real y calculadora científica y de fechas en una sola aplicación.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

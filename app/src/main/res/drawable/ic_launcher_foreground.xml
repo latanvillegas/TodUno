@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Golden Crescent Moon & Calendar/Calculator Emblem inside 66dp safe zone -->
+    <path
+        android:fillColor="#F5C451"
+        android:pathData="M56,28 C41.64,28 30,39.64 30,54 C30,68.36 41.64,80 56,80 C62.8,80 69.0,77.38 73.65,73.1 C63.2,74.2 53.8,66.4 53.8,54 C53.8,41.6 63.2,33.8 73.65,34.9 C69.0,30.62 62.8,28 56,28 Z" />
+    <!-- Calculator / Calendar Accent Plus & Grid -->
+    <path
+        android:fillColor="#64D2FF"
+        android:pathData="M68,43 H72 V49 H78 V53 H72 V59 H68 V53 H62 V49 H68 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M62,63 H78 V66 H62 Z M62,69 H78 V72 H62 Z" />
+</vector>
