@@ -55,6 +55,25 @@ data class ColorHarmonyGroup(
     val swatches: List<ColorSwatchSpec>
 )
 
+enum class GradientStyleType(val spanishTitle: String, val badge: String) {
+    LINEAR("Degradado Lineal", "Lineal"),
+    RADIAL("Degradado Radiante", "Radiante"),
+    SWEEP("Degradado Cónico 360°", "Cónico"),
+    MESH("Degradado de Malla (Mesh)", "Malla")
+}
+
+data class GradientPreset(
+    val id: String,
+    val name: String,
+    val subtitle: String,
+    val stops: List<ColorSwatchSpec>
+)
+
+data class NamedColorFamily(
+    val familyName: String,
+    val colors: List<ColorSwatchSpec>
+)
+
 object ColorHarmonyEngine {
 
     fun fromRgb(r: Int, g: Int, b: Int, label: String = ""): ColorSwatchSpec {
@@ -225,12 +244,23 @@ object ColorHarmonyEngine {
                 )
             ),
             ColorHarmonyGroup(
-                title = "Análoga",
+                title = "Análoga (3 Colores)",
                 description = "Colores vecinos (±30°) que crean transiciones suaves y naturales.",
                 swatches = listOf(
                     fromHsl(h - 30f, s, l, "Análogo -30°"),
                     fromHsl(h, hsl.s, hsl.l, "Base"),
                     fromHsl(h + 30f, s, l, "Análogo +30°")
+                )
+            ),
+            ColorHarmonyGroup(
+                title = "Análoga Extendida (5 Colores)",
+                description = "Abanico cromático amplio (±60°) ideal para degradados sedosos.",
+                swatches = listOf(
+                    fromHsl(h - 60f, s, l, "-60°"),
+                    fromHsl(h - 30f, s, l, "-30°"),
+                    fromHsl(h, hsl.s, hsl.l, "Base"),
+                    fromHsl(h + 30f, s, l, "+30°"),
+                    fromHsl(h + 60f, s, l, "+60°")
                 )
             ),
             ColorHarmonyGroup(
@@ -260,25 +290,297 @@ object ColorHarmonyEngine {
                     fromHsl(h + 180f, s, l, "+180°"),
                     fromHsl(h + 270f, s, l, "+270°")
                 )
+            ),
+            ColorHarmonyGroup(
+                title = "Hexádica (6 Tonos)",
+                description = "Seis puntos equidistantes cada 60° alrededor del círculo cromático.",
+                swatches = listOf(
+                    fromHsl(h, hsl.s, hsl.l, "0°"),
+                    fromHsl(h + 60f, s, l, "+60°"),
+                    fromHsl(h + 120f, s, l, "+120°"),
+                    fromHsl(h + 180f, s, l, "+180°"),
+                    fromHsl(h + 240f, s, l, "+240°"),
+                    fromHsl(h + 300f, s, l, "+300°")
+                )
             )
         )
     }
 
     /**
-     * Generates Tints & Shades (Luminosity variation from 92% light down to 12% dark).
+     * Generates dynamic multi-stop gradient stops derived from the active color's HSL + variant mode.
+     */
+    fun buildDynamicGradientStops(base: ColorSwatchSpec, variantIndex: Int = 0): List<ColorSwatchSpec> {
+        val h = base.hsl.h
+        val s = base.hsl.s.coerceAtLeast(55f)
+        val l = base.hsl.l.coerceIn(30f, 72f)
+        return when (variantIndex % 5) {
+            0 -> listOf(
+                fromHsl(h - 35f, s, (l - 14f).coerceAtLeast(14f), "Inicio"),
+                base.copy(label = "Centro 1"),
+                fromHsl(h + 35f, s, (l + 10f).coerceAtMost(85f), "Centro 2"),
+                fromHsl(h + 75f, (s + 10f).coerceAtMost(100f), (l + 18f).coerceAtMost(90f), "Fin")
+            )
+            1 -> listOf(
+                fromHsl(h, s, 16f, "Sombra Profunda"),
+                base.copy(label = "Núcleo"),
+                fromHsl(h + 180f, s, l, "Complementario"),
+                fromHsl(h + 210f, s, 82f, "Destello")
+            )
+            2 -> listOf(
+                base.copy(label = "Primario"),
+                fromHsl(h + 120f, s, l, "Tríada A"),
+                fromHsl(h + 240f, s, l, "Tríada B"),
+                fromHsl(h + 300f, s, (l + 12f).coerceAtMost(88f), "Acento")
+            )
+            3 -> listOf(
+                fromHsl(h - 20f, 90f, 22f, "Abismo"),
+                fromHsl(h, 95f, 48f, "Medio"),
+                fromHsl(h + 25f, 100f, 68f, "Brillo"),
+                fromHsl(h + 50f, 100f, 88f, "Corona")
+            )
+            else -> listOf(
+                fromHsl(h, s, 88f, "Tinte Claro"),
+                fromHsl(h + 45f, s, 64f, "Transición"),
+                fromHsl(h + 90f, s, 44f, "Profundo"),
+                fromHsl(h + 135f, s, 20f, "Nocturno")
+            )
+        }
+    }
+
+    /**
+     * Generates 6 organic mesh nodes for a 2D Mesh Gradient Canvas.
+     */
+    fun buildMeshNodes(stops: List<ColorSwatchSpec>): List<ColorSwatchSpec> {
+        if (stops.isEmpty()) return emptyList()
+        val first = stops.first()
+        val last = stops.last()
+        val mid1 = stops.getOrElse(1) { first }
+        val mid2 = stops.getOrElse(2) { last }
+        return listOf(
+            first,
+            mid1,
+            mid2,
+            last,
+            fromHsl(first.hsl.h + 60f, first.hsl.s.coerceAtLeast(65f), 62f, "Nodo Malla 5"),
+            fromHsl(last.hsl.h - 45f, last.hsl.s.coerceAtLeast(70f), 32f, "Nodo Malla 6")
+        )
+    }
+
+    fun formatCssGradient(
+        style: GradientStyleType,
+        angleDeg: Int,
+        stops: List<ColorSwatchSpec>
+    ): String {
+        val hexList = stops.joinToString(", ") { it.hex }
+        return when (style) {
+            GradientStyleType.LINEAR -> "linear-gradient(${angleDeg}deg, $hexList)"
+            GradientStyleType.RADIAL -> "radial-gradient(circle at center, $hexList)"
+            GradientStyleType.SWEEP -> "conic-gradient(from ${angleDeg}deg at 50% 50%, $hexList, ${stops.firstOrNull()?.hex ?: "#FFF"})"
+            GradientStyleType.MESH -> {
+                val nodes = buildMeshNodes(stops)
+                val layers = listOf(
+                    "radial-gradient(at 15% 20%, ${nodes.getOrElse(0) { stops.first() }.hex} 0px, transparent 55%)",
+                    "radial-gradient(at 85% 18%, ${nodes.getOrElse(1) { stops.first() }.hex} 0px, transparent 55%)",
+                    "radial-gradient(at 25% 82%, ${nodes.getOrElse(2) { stops.first() }.hex} 0px, transparent 55%)",
+                    "radial-gradient(at 82% 78%, ${nodes.getOrElse(3) { stops.first() }.hex} 0px, transparent 55%)",
+                    "radial-gradient(at 52% 48%, ${nodes.getOrElse(4) { stops.first() }.hex} 0px, transparent 60%)"
+                )
+                layers.joinToString(", ")
+            }
+        }
+    }
+
+    val CURATED_GRADIENT_PRESETS: List<GradientPreset> by lazy {
+        listOf(
+            GradientPreset(
+                id = "aurora_boreal",
+                name = "Aurora Boreal Ártica",
+                subtitle = "Esmeralda, Cian Bioluminiscente e Índigo Profundo",
+                stops = listOf(
+                    fromRgb(11, 16, 38, "Cosmos"),
+                    fromRgb(16, 185, 129, "Esmeralda"),
+                    fromRgb(6, 182, 212, "Cian Polar"),
+                    fromRgb(139, 92, 246, "Violeta Boreal")
+                )
+            ),
+            GradientPreset(
+                id = "supernova_solar",
+                name = "Supernova y Corona Solar",
+                subtitle = "Oro Radiante, Ámbar, Coral y Carmesí",
+                stops = listOf(
+                    fromRgb(255, 243, 176, "Luz Solar"),
+                    fromRgb(245, 196, 81, "Oro Lunar"),
+                    fromRgb(249, 115, 22, "Ámbar Ígneo"),
+                    fromRgb(190, 18, 60, "Carmesí")
+                )
+            ),
+            GradientPreset(
+                id = "nebulosa_cyber",
+                name = "Nebulosa Orión & Magenta",
+                subtitle = "Fucsia Neón, Púrpura Real y Azul Eléctrico",
+                stops = listOf(
+                    fromRgb(236, 72, 153, "Rosa Neón"),
+                    fromRgb(168, 85, 247, "Púrpura"),
+                    fromRgb(59, 130, 246, "Azul Real"),
+                    fromRgb(15, 23, 42, "Noche")
+                )
+            ),
+            GradientPreset(
+                id = "oceano_abisal",
+                name = "Océano Bioluminiscente",
+                subtitle = "Turquesa Tropical, Aguamarina y Azul Abisal",
+                stops = listOf(
+                    fromRgb(167, 243, 208, "Espuma Menta"),
+                    fromRgb(45, 212, 191, "Turquesa"),
+                    fromRgb(2, 132, 199, "Azul Océano"),
+                    fromRgb(12, 25, 56, "Fosa Abisal")
+                )
+            ),
+            GradientPreset(
+                id = "atardecer_terracota",
+                name = "Atardecer en el Desierto",
+                subtitle = "Melocotón, Terracota, Malva y Violeta Nocturno",
+                stops = listOf(
+                    fromRgb(253, 186, 116, "Melocotón"),
+                    fromRgb(244, 63, 94, "Coral Rosa"),
+                    fromRgb(147, 51, 234, "Amatista"),
+                    fromRgb(30, 27, 75, "Horizonte")
+                )
+            ),
+            GradientPreset(
+                id = "bosque_esmeralda",
+                name = "Selva Esmeralda yLima",
+                subtitle = "Lima Fresco, Jade, Esmeralda y Pino Oscuro",
+                stops = listOf(
+                    fromRgb(190, 242, 100, "Lima"),
+                    fromRgb(52, 211, 153, "Jade"),
+                    fromRgb(5, 150, 105, "Esmeralda"),
+                    fromRgb(6, 78, 59, "Bosque")
+                )
+            ),
+            GradientPreset(
+                id = "metal_titanio",
+                name = "Titanio y Plata Selenita",
+                subtitle = "Metálico Industrial de Alto Contraste",
+                stops = listOf(
+                    fromRgb(248, 250, 252, "Platino"),
+                    fromRgb(148, 163, 184, "Acero"),
+                    fromRgb(71, 85, 105, "Titanio"),
+                    fromRgb(15, 23, 42, "Obsidiana")
+                )
+            ),
+            GradientPreset(
+                id = "algodon_pastel",
+                name = "Nube Pastel Holográfica",
+                subtitle = "Rosa Cuarzo, Lavanda, Celeste y Menta Suave",
+                stops = listOf(
+                    fromRgb(251, 207, 232, "Rosa Cuarzo"),
+                    fromRgb(221, 214, 254, "Lavanda"),
+                    fromRgb(186, 230, 253, "Celeste"),
+                    fromRgb(167, 243, 208, "Menta Pastel")
+                )
+            )
+        )
+    }
+
+    val NAMED_COLOR_FAMILIES: List<NamedColorFamily> by lazy {
+        listOf(
+            NamedColorFamily(
+                familyName = "Rojos, Corales y Rosas",
+                colors = listOf(
+                    fromRgb(239, 68, 68, "Rojo Vivo"),
+                    fromRgb(220, 38, 38, "Rojo Carmesí"),
+                    fromRgb(153, 27, 27, "Rojo Borgoña"),
+                    fromRgb(255, 122, 107, "Coral Eclipse"),
+                    fromRgb(244, 63, 94, "Rosa Rubí"),
+                    fromRgb(236, 72, 153, "Rosa Magenta"),
+                    fromRgb(251, 113, 133, "Salmón Rosado"),
+                    fromRgb(136, 19, 55, "Vino Tinto")
+                )
+            ),
+            NamedColorFamily(
+                familyName = "Naranjas, Ámbar y Dorados",
+                colors = listOf(
+                    fromRgb(249, 115, 22, "Naranja Mandarina"),
+                    fromRgb(234, 88, 12, "Terracota"),
+                    fromRgb(245, 158, 11, "Ámbar Solar"),
+                    fromRgb(245, 196, 81, "Oro Lunar"),
+                    fromRgb(250, 204, 21, "Amarillo Canario"),
+                    fromRgb(254, 240, 138, "Crema Vainilla"),
+                    fromRgb(180, 83, 9, "Bronce Antiguo"),
+                    fromRgb(120, 53, 15, "OcreTostado")
+                )
+            ),
+            NamedColorFamily(
+                familyName = "Verdes, Esmeraldas y Menta",
+                colors = listOf(
+                    fromRgb(132, 204, 22, "Verde Lima"),
+                    fromRgb(34, 197, 94, "Verde Pradera"),
+                    fromRgb(16, 185, 129, "Verde Esmeralda"),
+                    fromRgb(92, 225, 166, "Menta Aurora"),
+                    fromRgb(20, 184, 166, "Verde Cerceta (Teal)"),
+                    fromRgb(101, 163, 13, "Verde Oliva"),
+                    fromRgb(6, 95, 70, "Verde Bosque"),
+                    fromRgb(167, 243, 208, "Aguamarina Suave")
+                )
+            ),
+            NamedColorFamily(
+                familyName = "Cianes, Turquesas y Azules",
+                colors = listOf(
+                    fromRgb(100, 210, 255, "Cian Celestial"),
+                    fromRgb(6, 182, 212, "Turquesa Caribe"),
+                    fromRgb(14, 165, 233, "Azul Cielo"),
+                    fromRgb(59, 130, 246, "Azul Cobalto"),
+                    fromRgb(37, 99, 235, "Azul Real"),
+                    fromRgb(29, 78, 216, "Azul Zafiro"),
+                    fromRgb(30, 58, 138, "Azul Marino"),
+                    fromRgb(11, 16, 38, "Azul Medianoche")
+                )
+            ),
+            NamedColorFamily(
+                familyName = "Índigos, Violetas y Púrpuras",
+                colors = listOf(
+                    fromRgb(99, 102, 241, "Índigo Eléctrico"),
+                    fromRgb(139, 92, 246, "Violeta Amatista"),
+                    fromRgb(168, 85, 247, "Púrpura Orquídea"),
+                    fromRgb(217, 70, 239, "Fucsia Imperial"),
+                    fromRgb(126, 34, 206, "Morado Profundo"),
+                    fromRgb(196, 181, 253, "Lavanda Suave"),
+                    fromRgb(76, 29, 149, "Violeta Cosmos"),
+                    fromRgb(49, 46, 129, "Índigo Abisal")
+                )
+            ),
+            NamedColorFamily(
+                familyName = "Tonos Pastel, Neón y Neutros",
+                colors = listOf(
+                    fromRgb(255, 0, 128, "Neón Cyber Pink"),
+                    fromRgb(0, 255, 198, "Neón Ciber Menta"),
+                    fromRgb(204, 255, 0, "Neón Voltio"),
+                    fromRgb(248, 250, 252, "Blanco Estrella"),
+                    fromRgb(203, 213, 225, "Plata Selenita"),
+                    fromRgb(100, 116, 139, "Gris Pizarra"),
+                    fromRgb(51, 65, 85, "Gris Grafito"),
+                    fromRgb(15, 23, 42, "Negro Obsidiana")
+                )
+            )
+        )
+    }
+
+    /**
+     * Generates Tints & Shades (Luminosity variation from 94% light down to 10% dark).
      */
     fun buildLuminosityScale(hsl: HslColor): List<ColorSwatchSpec> {
-        val lightnessSteps = listOf(92f, 82f, 72f, 62f, 52f, 42f, 32f, 22f, 12f)
+        val lightnessSteps = listOf(94f, 84f, 74f, 64f, 54f, 44f, 34f, 24f, 14f, 8f)
         return lightnessSteps.map { stepL ->
             fromHsl(hsl.h, hsl.s, stepL, "L ${stepL.roundToInt()}%")
         }
     }
 
     /**
-     * Generates Tones (Saturation variation from 100% pure to 10% muted gray).
+     * Generates Tones (Saturation variation from 100% pure to 5% muted gray).
      */
     fun buildSaturationTones(hsl: HslColor): List<ColorSwatchSpec> {
-        val saturationSteps = listOf(100f, 85f, 70f, 55f, 40f, 25f, 10f)
+        val saturationSteps = listOf(100f, 85f, 70f, 55f, 40f, 25f, 12f, 4f)
         val safeL = hsl.l.coerceIn(25f, 75f)
         return saturationSteps.map { stepS ->
             fromHsl(hsl.h, stepS, safeL, "S ${stepS.roundToInt()}%")

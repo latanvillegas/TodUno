@@ -26,15 +26,20 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BookmarkAdd
+import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Gradient
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -61,13 +66,19 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.domain.ColorHarmonyEngine
 import com.example.domain.ColorSwatchSpec
+import com.example.domain.GradientPreset
+import com.example.domain.GradientStyleType
 import com.example.ui.ColorStudioSubTab
 import com.example.ui.SeleniaUiState
 import java.util.Locale
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -79,6 +90,11 @@ fun ColorStudioScreen(
     onUpdateCmyk: (Int, Int, Int, Int) -> Unit,
     onApplyHex: (String) -> Unit,
     onSaveFavoriteColor: () -> Unit,
+    onSetGradientStyle: (GradientStyleType) -> Unit,
+    onSetGradientAngle: (Int) -> Unit,
+    onSetRadialFocalAndRadius: (Float, Float, Float) -> Unit,
+    onCycleGradientVariant: () -> Unit,
+    onApplyGradientPreset: (List<ColorSwatchSpec>) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val clipboardManager = LocalClipboardManager.current
@@ -118,11 +134,10 @@ fun ColorStudioScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
-                        // Top Live Color Swatch Banner
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(132.dp)
+                                .height(126.dp)
                                 .background(composeColor)
                                 .padding(16.dp)
                                 .testTag("active_color_preview_banner")
@@ -172,7 +187,6 @@ fun ColorStudioScreen(
                                 }
                             }
 
-                            // WCAG Contrast ratio badges at bottom of banner
                             Row(
                                 modifier = Modifier.align(Alignment.BottomStart),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -202,7 +216,6 @@ fun ColorStudioScreen(
                             }
                         }
 
-                        // 4 Color Model Readout Chips (Tap to copy any format)
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -213,7 +226,9 @@ fun ColorStudioScreen(
                                 Text(
                                     text = "✓ $msg",
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.tertiary
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
 
@@ -261,64 +276,94 @@ fun ColorStudioScreen(
                 }
             }
 
-            // 2. Sub-Tab Selector: Ajustes (RGB/HEX/CMYK/HSL) | Combinaciones | Tonos y Sombras
+            // 2. 5-Section Sub-Navigation Strip:
+            // Conversor | Degradados y Malla | Combinaciones | Tonos | Catálogo (+48 Colores)
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    FilterChip(
-                        selected = uiState.colorStudioSubTab == ColorStudioSubTab.CONVERTER_SLIDERS,
-                        onClick = { onSelectSubTab(ColorStudioSubTab.CONVERTER_SLIDERS) },
-                        label = { Text("RGB • CMYK • HSL") },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Tune,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("color_tab_sliders")
-                    )
-                    FilterChip(
-                        selected = uiState.colorStudioSubTab == ColorStudioSubTab.COMBINATIONS,
-                        onClick = { onSelectSubTab(ColorStudioSubTab.COMBINATIONS) },
-                        label = { Text("Combinaciones") },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Palette,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("color_tab_combinations")
-                    )
-                    FilterChip(
-                        selected = uiState.colorStudioSubTab == ColorStudioSubTab.TONES_AND_SHADES,
-                        onClick = { onSelectSubTab(ColorStudioSubTab.TONES_AND_SHADES) },
-                        label = { Text("Tonos") },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Gradient,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("color_tab_tones")
-                    )
+                    item {
+                        FilterChip(
+                            selected = uiState.colorStudioSubTab == ColorStudioSubTab.CONVERTER_SLIDERS,
+                            onClick = { onSelectSubTab(ColorStudioSubTab.CONVERTER_SLIDERS) },
+                            label = { Text("RGB • CMYK • HSL") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Tune,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
+                            modifier = Modifier.testTag("color_tab_sliders")
+                        )
+                    }
+                    item {
+                        FilterChip(
+                            selected = uiState.colorStudioSubTab == ColorStudioSubTab.GRADIENTS_AND_MESH,
+                            onClick = { onSelectSubTab(ColorStudioSubTab.GRADIENTS_AND_MESH) },
+                            label = { Text("Degradados y Malla") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
+                            modifier = Modifier.testTag("color_tab_gradients")
+                        )
+                    }
+                    item {
+                        FilterChip(
+                            selected = uiState.colorStudioSubTab == ColorStudioSubTab.COMBINATIONS,
+                            onClick = { onSelectSubTab(ColorStudioSubTab.COMBINATIONS) },
+                            label = { Text("Combinaciones") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Palette,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
+                            modifier = Modifier.testTag("color_tab_combinations")
+                        )
+                    }
+                    item {
+                        FilterChip(
+                            selected = uiState.colorStudioSubTab == ColorStudioSubTab.TONES_AND_SHADES,
+                            onClick = { onSelectSubTab(ColorStudioSubTab.TONES_AND_SHADES) },
+                            label = { Text("Tonos y Sombras") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Gradient,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
+                            modifier = Modifier.testTag("color_tab_tones")
+                        )
+                    }
+                    item {
+                        FilterChip(
+                            selected = uiState.colorStudioSubTab == ColorStudioSubTab.COLOR_CATALOG,
+                            onClick = { onSelectSubTab(ColorStudioSubTab.COLOR_CATALOG) },
+                            label = { Text("Catálogo +48 Colores") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.ColorLens,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
+                            modifier = Modifier.testTag("color_tab_catalog")
+                        )
+                    }
                 }
             }
 
             // 3. Content based on selected sub-tab
             when (uiState.colorStudioSubTab) {
                 ColorStudioSubTab.CONVERTER_SLIDERS -> {
-                    // Interactive Spectrum Bar & HEX Input
                     item {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -337,11 +382,14 @@ fun ColorStudioScreen(
                                     color = MaterialTheme.colorScheme.primary
                                 )
 
-                                // Interactive 360° Hue Spectrum Canvas Bar
                                 HueSpectrumBar(
                                     currentHue = active.hsl.h,
                                     onSelectHue = { newHue ->
-                                        onUpdateHsl(newHue, active.hsl.s.coerceAtLeast(35f), active.hsl.l.coerceIn(20f, 80f))
+                                        onUpdateHsl(
+                                            newHue,
+                                            active.hsl.s.coerceAtLeast(35f),
+                                            active.hsl.l.coerceIn(20f, 80f)
+                                        )
                                     }
                                 )
 
@@ -372,7 +420,6 @@ fun ColorStudioScreen(
                                     }
                                 }
 
-                                // Saved/Preset Swatches Row
                                 LazyRow(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
@@ -567,6 +614,59 @@ fun ColorStudioScreen(
                     }
                 }
 
+                ColorStudioSubTab.GRADIENTS_AND_MESH -> {
+                    item {
+                        GradientAndMeshLabCard(
+                            uiState = uiState,
+                            onSetGradientStyle = onSetGradientStyle,
+                            onSetGradientAngle = onSetGradientAngle,
+                            onSetRadialFocalAndRadius = onSetRadialFocalAndRadius,
+                            onCycleGradientVariant = onCycleGradientVariant,
+                            onSelectStopColor = { onApplyHex(it.hex) },
+                            onCopyCss = { css -> copyValue("CSS Degradado", css) }
+                        )
+                    }
+
+                    // Curated Gradients & Mesh Gallery
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            shape = MaterialTheme.shapes.large,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    text = "Galería de Degradados Lineales, Radiantes y Malla",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "Toca cualquier colección para cargarla en el lienzo de degradados o copia sus códigos HEX.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                ColorHarmonyEngine.CURATED_GRADIENT_PRESETS.forEach { preset ->
+                                    CuratedGradientPresetRow(
+                                        preset = preset,
+                                        activeStyle = uiState.gradientStyle,
+                                        onApplyPreset = { onApplyGradientPreset(preset.stops) },
+                                        onCopyPreset = {
+                                            val hexes = preset.stops.joinToString(" → ") { it.hex }
+                                            copyValue(preset.name, hexes)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 ColorStudioSubTab.COMBINATIONS -> {
                     val harmonies = ColorHarmonyEngine.buildColorHarmonies(active.hsl)
                     items(harmonies) { group ->
@@ -592,10 +692,9 @@ fun ColorStudioScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
 
-                                // Interactive palette bar
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     group.swatches.forEach { swatch ->
                                         HarmonySwatchCard(
@@ -618,7 +717,7 @@ fun ColorStudioScreen(
                     item {
                         TonalScaleCard(
                             title = "Matices y Sombras (Escala de Luminosidad L%)",
-                            subtitle = "Variación desde tintes claros pastel (92%) hasta sombras profundas (12%). Toca cualquier tono para seleccionarlo.",
+                            subtitle = "10 variaciones desde tintes claros pastel (94%) hasta sombras profundas (8%). Toca cualquier tono para seleccionarlo.",
                             swatches = luminosityScale,
                             onSelectSwatch = { onApplyHex(it.hex) },
                             onCopySwatch = { copyValue("Tono", "${it.hex} (${it.rgb.formatCss()})") }
@@ -628,14 +727,537 @@ fun ColorStudioScreen(
                     item {
                         TonalScaleCard(
                             title = "Tonos de Saturación (Escala S%)",
-                            subtitle = "Variación desde color puro vibrante (100%) hasta gris apagado (10%).",
+                            subtitle = "8 variaciones desde color puro vibrante (100%) hasta gris neutro (4%).",
                             swatches = saturationTones,
                             onSelectSwatch = { onApplyHex(it.hex) },
                             onCopySwatch = { copyValue("Saturación", "${it.hex} (${it.hsl.formatCss()})") }
                         )
                     }
                 }
+
+                ColorStudioSubTab.COLOR_CATALOG -> {
+                    items(ColorHarmonyEngine.NAMED_COLOR_FAMILIES) { family ->
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            shape = MaterialTheme.shapes.large,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    text = family.familyName,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    family.colors.chunked(2).forEach { pair ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            pair.forEach { swatch ->
+                                                CatalogColorItemCard(
+                                                    swatch = swatch,
+                                                    onSelect = { onApplyHex(swatch.hex) },
+                                                    onCopy = {
+                                                        copyValue(
+                                                            swatch.label,
+                                                            "${swatch.hex} | ${swatch.rgb.formatCss()} | ${swatch.cmyk.formatCss()}"
+                                                        )
+                                                    },
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                            }
+                                            if (pair.size == 1) {
+                                                Spacer(modifier = Modifier.weight(1f))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun GradientAndMeshLabCard(
+    uiState: SeleniaUiState,
+    onSetGradientStyle: (GradientStyleType) -> Unit,
+    onSetGradientAngle: (Int) -> Unit,
+    onSetRadialFocalAndRadius: (Float, Float, Float) -> Unit,
+    onCycleGradientVariant: () -> Unit,
+    onSelectStopColor: (ColorSwatchSpec) -> Unit,
+    onCopyCss: (String) -> Unit
+) {
+    val stops = uiState.activeGradientStops
+    val cssCode = ColorHarmonyEngine.formatCssGradient(
+        style = uiState.gradientStyle,
+        angleDeg = uiState.gradientAngleDeg,
+        stops = stops
+    )
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = MaterialTheme.shapes.extraLarge,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = uiState.gradientStyle.spanishTitle,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "Lineal, Radiante (Radial), Cónico 360° y Malla Multicapa (Mesh)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                FilledTonalButton(
+                    onClick = onCycleGradientVariant,
+                    modifier = Modifier.testTag("cycle_gradient_variant_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Variar")
+                }
+            }
+
+            // 4 Gradient Style Selector Chips: Lineal | Radiante | Cónico | Malla
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                GradientStyleType.entries.forEach { style ->
+                    FilterChip(
+                        selected = uiState.gradientStyle == style,
+                        onClick = { onSetGradientStyle(style) },
+                        label = { Text(style.badge) },
+                        leadingIcon = if (style == GradientStyleType.MESH) {
+                            {
+                                Icon(
+                                    imageVector = Icons.Default.GridView,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        } else null,
+                        modifier = Modifier.testTag("gradient_style_${style.name.lowercase(Locale.US)}")
+                    )
+                }
+            }
+
+            // Interactive Live Gradient / Mesh Canvas
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(210.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .border(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.outline,
+                        shape = RoundedCornerShape(24.dp)
+                    )
+                    .pointerInput(uiState.gradientStyle, uiState.radialRadiusFactor) {
+                        detectTapGestures { tapOffset ->
+                            if (uiState.gradientStyle == GradientStyleType.RADIAL ||
+                                uiState.gradientStyle == GradientStyleType.MESH
+                            ) {
+                                val nx = (tapOffset.x / size.width).coerceIn(0.1f, 0.9f)
+                                val ny = (tapOffset.y / size.height).coerceIn(0.1f, 0.9f)
+                                onSetRadialFocalAndRadius(nx, ny, uiState.radialRadiusFactor)
+                            }
+                        }
+                    }
+                    .testTag("gradient_preview_canvas")
+            ) {
+                GradientRendererCanvas(
+                    style = uiState.gradientStyle,
+                    stops = stops,
+                    angleDeg = uiState.gradientAngleDeg,
+                    focalX = uiState.radialFocalX,
+                    focalY = uiState.radialFocalY,
+                    radiusFactor = uiState.radialRadiusFactor
+                )
+
+                // Overlay badge with hint
+                Surface(
+                    color = Color.Black.copy(alpha = 0.42f),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(12.dp)
+                ) {
+                    Text(
+                        text = when (uiState.gradientStyle) {
+                            GradientStyleType.LINEAR -> "Ángulo ${uiState.gradientAngleDeg}°"
+                            GradientStyleType.RADIAL -> "Toca el lienzo para mover el foco radiante"
+                            GradientStyleType.SWEEP -> "Barrido Cónico 360°"
+                            GradientStyleType.MESH -> "Malla de 6 nodos (toca para desplazar foco)"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+            }
+
+            // Controls for Angle (Linear) or Radius (Radial/Mesh)
+            if (uiState.gradientStyle == GradientStyleType.LINEAR) {
+                ColorChannelSlider(
+                    label = "Ángulo del Degradado Lineal",
+                    valueText = "${uiState.gradientAngleDeg}°",
+                    value = uiState.gradientAngleDeg.toFloat(),
+                    valueRange = 0f..360f,
+                    accentColor = MaterialTheme.colorScheme.primary,
+                    onValueChange = { onSetGradientAngle(it.roundToInt()) }
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(0, 45, 90, 135, 180, 270).forEach { presetAngle ->
+                        AssistChip(
+                            onClick = { onSetGradientAngle(presetAngle) },
+                            label = { Text("${presetAngle}°") }
+                        )
+                    }
+                }
+            } else if (uiState.gradientStyle == GradientStyleType.RADIAL ||
+                uiState.gradientStyle == GradientStyleType.MESH
+            ) {
+                ColorChannelSlider(
+                    label = "Expansión del Radio Radiante / Malla",
+                    valueText = "${(uiState.radialRadiusFactor * 100).roundToInt()}%",
+                    value = uiState.radialRadiusFactor,
+                    valueRange = 0.35f..1.55f,
+                    accentColor = MaterialTheme.colorScheme.secondary,
+                    onValueChange = {
+                        onSetRadialFocalAndRadius(uiState.radialFocalX, uiState.radialFocalY, it)
+                    }
+                )
+            }
+
+            // Color Stops Row (4 stops with HEX, RGB, CMYK)
+            Text(
+                text = "Nodos de Color del Degradado (${stops.size} paradas)",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                stops.forEach { stop ->
+                    HarmonySwatchCard(
+                        swatch = stop,
+                        onSelect = { onSelectStopColor(stop) },
+                        onCopy = { onCopyCss(stop.hex) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+
+            // Copy CSS Gradient Button
+            Surface(
+                onClick = { onCopyCss(cssCode) },
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("copy_gradient_css_button")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Código CSS / Diseño (Toca para copiar)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                        Text(
+                            text = cssCode,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(
+                        imageVector = Icons.Default.ContentCopy,
+                        contentDescription = "Copiar CSS",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GradientRendererCanvas(
+    style: GradientStyleType,
+    stops: List<ColorSwatchSpec>,
+    angleDeg: Int,
+    focalX: Float,
+    focalY: Float,
+    radiusFactor: Float
+) {
+    val composeColors = remember(stops) {
+        if (stops.size >= 2) {
+            stops.map { Color(it.rgb.r, it.rgb.g, it.rgb.b) }
+        } else {
+            listOf(Color(0xFFF5C451), Color(0xFF64D2FF))
+        }
+    }
+
+    val meshNodes = remember(stops) {
+        ColorHarmonyEngine.buildMeshNodes(stops).map {
+            Color(it.rgb.r, it.rgb.g, it.rgb.b)
+        }
+    }
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val w = size.width
+        val h = size.height
+        if (w <= 0f || h <= 0f) return@Canvas
+
+        when (style) {
+            GradientStyleType.LINEAR -> {
+                val rad = angleDeg * (PI / 180.0)
+                val cosA = cos(rad).toFloat()
+                val sinA = sin(rad).toFloat()
+                val halfDiag = kotlin.math.sqrt(w * w + h * h) / 2f
+                val cx = w / 2f
+                val cy = h / 2f
+                val start = Offset(cx - cosA * halfDiag, cy - sinA * halfDiag)
+                val end = Offset(cx + cosA * halfDiag, cy + sinA * halfDiag)
+                drawRect(
+                    brush = Brush.linearGradient(
+                        colors = composeColors,
+                        start = start,
+                        end = end
+                    )
+                )
+            }
+
+            GradientStyleType.RADIAL -> {
+                val center = Offset(w * focalX, h * focalY)
+                val radius = (kotlin.math.max(w, h) * 0.65f * radiusFactor).coerceAtLeast(20f)
+                drawRect(color = composeColors.last())
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = composeColors,
+                        center = center,
+                        radius = radius
+                    )
+                )
+            }
+
+            GradientStyleType.SWEEP -> {
+                val sweepColors = composeColors + composeColors.first()
+                drawRect(
+                    brush = Brush.sweepGradient(
+                        colors = sweepColors,
+                        center = Offset(w * focalX, h * focalY)
+                    )
+                )
+            }
+
+            GradientStyleType.MESH -> {
+                // Multi-point organic 2D Mesh Gradient using layered radial fields
+                drawRect(color = meshNodes.lastOrNull() ?: Color(0xFF0B1026))
+
+                val anchorPoints = listOf(
+                    Offset(w * 0.15f, h * 0.18f),
+                    Offset(w * 0.85f, h * 0.20f),
+                    Offset(w * 0.20f, h * 0.85f),
+                    Offset(w * 0.82f, h * 0.80f),
+                    Offset(w * focalX, h * focalY),
+                    Offset(w * (1f - focalX), h * (1f - focalY))
+                )
+
+                val baseRadius = kotlin.math.max(w, h) * 0.68f * radiusFactor
+                meshNodes.forEachIndexed { idx, nodeColor ->
+                    val pt = anchorPoints.getOrElse(idx) { Offset(w * 0.5f, h * 0.5f) }
+                    drawRect(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                nodeColor.copy(alpha = 0.88f),
+                                nodeColor.copy(alpha = 0.35f),
+                                Color.Transparent
+                            ),
+                            center = pt,
+                            radius = (baseRadius * if (idx == 4) 0.9f else 0.78f).coerceAtLeast(20f)
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CuratedGradientPresetRow(
+    preset: GradientPreset,
+    activeStyle: GradientStyleType,
+    onApplyPreset: () -> Unit,
+    onCopyPreset: () -> Unit
+) {
+    Surface(
+        onClick = onApplyPreset,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("gradient_preset_${preset.id}")
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .clip(RoundedCornerShape(14.dp))
+            ) {
+                GradientRendererCanvas(
+                    style = activeStyle,
+                    stops = preset.stops,
+                    angleDeg = 135,
+                    focalX = 0.5f,
+                    focalY = 0.5f,
+                    radiusFactor = 0.9f
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = preset.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = preset.stops.joinToString(" • ") { it.hex },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Default.ContentCopy,
+                    contentDescription = "Copiar paleta",
+                    tint = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clickable { onCopyPreset() }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CatalogColorItemCard(
+    swatch: ColorSwatchSpec,
+    onSelect: () -> Unit,
+    onCopy: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val c = Color(swatch.rgb.r, swatch.rgb.g, swatch.rgb.b)
+    Surface(
+        onClick = onSelect,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        shape = MaterialTheme.shapes.medium,
+        modifier = modifier
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(c)
+                    .border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = swatch.label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "${swatch.hex} • RGB(${swatch.rgb.r},${swatch.rgb.g},${swatch.rgb.b})",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "CMYK(${swatch.cmyk.c},${swatch.cmyk.m},${swatch.cmyk.y},${swatch.cmyk.k}) • HSL(${swatch.hsl.h.roundToInt()}°,${swatch.hsl.s.roundToInt()}%,${swatch.hsl.l.roundToInt()}%)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Icon(
+                imageVector = Icons.Default.ContentCopy,
+                contentDescription = "Copiar",
+                tint = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier
+                    .size(16.dp)
+                    .clickable { onCopy() }
+            )
         }
     }
 }
@@ -794,12 +1416,12 @@ private fun HarmonySwatchCard(
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(68.dp)
+                .height(64.dp)
                 .background(bgColor)
         ) {
             Text(
                 text = swatch.hex,
-                style = MaterialTheme.typography.labelMedium,
+                style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
                 color = textColor
             )
@@ -809,17 +1431,18 @@ private fun HarmonySwatchCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onCopy)
-                .padding(vertical = 6.dp, horizontal = 4.dp)
+                .padding(vertical = 6.dp, horizontal = 2.dp)
         ) {
             Text(
                 text = swatch.label,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center,
-                maxLines = 1
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = "RGB(${swatch.rgb.r},${swatch.rgb.g},${swatch.rgb.b})",
+                text = "${swatch.rgb.r},${swatch.rgb.g},${swatch.rgb.b}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,

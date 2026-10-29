@@ -1,6 +1,7 @@
 package com.example
 
 import com.example.domain.ColorHarmonyEngine
+import com.example.domain.GradientStyleType
 import com.example.domain.LunarAstronomer
 import com.example.domain.MoonPhaseType
 import com.example.domain.ScientificCalculatorEngine
@@ -28,7 +29,7 @@ class ExampleUnitTest {
     }
 
     @Test
-    fun colorHarmonyEngine_convertsRgbHexCmykHslAndBuildsHarmonies() {
+    fun colorHarmonyEngine_convertsRgbHexCmykHslAndBuildsGradientsAndMesh() {
         val swatch = ColorHarmonyEngine.fromRgb(245, 196, 81)
         assertEquals("#F5C451", swatch.hex)
 
@@ -39,9 +40,18 @@ class ExampleUnitTest {
         assertEquals(81, parsed?.b)
 
         val harmonies = ColorHarmonyEngine.buildColorHarmonies(swatch.hsl)
-        assertEquals(5, harmonies.size)
+        assertEquals(7, harmonies.size)
 
         val tones = ColorHarmonyEngine.buildLuminosityScale(swatch.hsl)
-        assertEquals(9, tones.size)
+        assertEquals(10, tones.size)
+
+        val stops = ColorHarmonyEngine.buildDynamicGradientStops(swatch, 0)
+        assertEquals(4, stops.size)
+
+        val meshNodes = ColorHarmonyEngine.buildMeshNodes(stops)
+        assertEquals(6, meshNodes.size)
+
+        val cssMesh = ColorHarmonyEngine.formatCssGradient(GradientStyleType.MESH, 135, stops)
+        assertTrue(cssMesh.contains("radial-gradient"))
     }
 }

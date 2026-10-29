@@ -410,7 +410,12 @@ private fun SeleniaMainContent(
                 onUpdateHsl = viewModel::updateColorFromHsl,
                 onUpdateCmyk = viewModel::updateColorFromCmyk,
                 onApplyHex = viewModel::updateColorFromHex,
-                onSaveFavoriteColor = viewModel::saveFavoriteColor
+                onSaveFavoriteColor = viewModel::saveFavoriteColor,
+                onSetGradientStyle = viewModel::setGradientStyle,
+                onSetGradientAngle = viewModel::setGradientAngle,
+                onSetRadialFocalAndRadius = viewModel::setRadialFocalAndRadius,
+                onCycleGradientVariant = viewModel::cycleGradientHarmonyVariant,
+                onApplyGradientPreset = viewModel::applyGradientPreset
             )
         }
     }

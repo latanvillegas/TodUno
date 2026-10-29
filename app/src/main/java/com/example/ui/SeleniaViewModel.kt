@@ -5,6 +5,7 @@ import com.example.domain.CalculationRecord
 import com.example.domain.CalendarDayCell
 import com.example.domain.ColorHarmonyEngine
 import com.example.domain.ColorSwatchSpec
+import com.example.domain.GradientStyleType
 import com.example.domain.LunarAstronomer
 import com.example.domain.LunarDayInfo
 import com.example.domain.MajorPhaseMilestone
@@ -38,8 +39,10 @@ enum class CalculatorMode {
 
 enum class ColorStudioSubTab {
     CONVERTER_SLIDERS,
+    GRADIENTS_AND_MESH,
     COMBINATIONS,
-    TONES_AND_SHADES
+    TONES_AND_SHADES,
+    COLOR_CATALOG
 }
 
 data class CalendarNote(
@@ -78,15 +81,24 @@ data class SeleniaUiState(
     val useLunarCycleOffset: Boolean = false,
     val comparisonEndDate: SimpleDate = LunarAstronomer.addDays(LunarAstronomer.today(), 30),
 
-    // Color Studio State
+    // Color Studio & Gradients State
     val colorStudioSubTab: ColorStudioSubTab = ColorStudioSubTab.CONVERTER_SLIDERS,
     val activeColorSwatch: ColorSwatchSpec = ColorHarmonyEngine.fromRgb(245, 196, 81),
+    val gradientStyle: GradientStyleType = GradientStyleType.MESH,
+    val gradientAngleDeg: Int = 135,
+    val radialFocalX: Float = 0.5f,
+    val radialFocalY: Float = 0.5f,
+    val radialRadiusFactor: Float = 0.85f,
+    val gradientVariantIndex: Int = 0,
+    val customGradientPresetStops: List<ColorSwatchSpec>? = null,
     val savedColorSwatches: List<ColorSwatchSpec> = listOf(
         ColorHarmonyEngine.fromRgb(245, 196, 81),  // Oro Lunar #F5C451
         ColorHarmonyEngine.fromRgb(100, 210, 255), // Cian Celestial #64D2FF
         ColorHarmonyEngine.fromRgb(92, 225, 166),  // Menta Aurora #5CE1A6
         ColorHarmonyEngine.fromRgb(255, 122, 107), // Coral Eclipse #FF7A6B
         ColorHarmonyEngine.fromRgb(138, 92, 246),  // Violeta Nebulosa #8A5CF6
+        ColorHarmonyEngine.fromRgb(236, 72, 153),  // Magenta Neón #EC4899
+        ColorHarmonyEngine.fromRgb(16, 185, 129),  // Esmeralda #10B981
         ColorHarmonyEngine.fromRgb(28, 39, 82)     // Índigo Astrolabio #1C2752
     )
 ) {
@@ -108,6 +120,10 @@ data class SeleniaUiState(
 
     val synodicCyclesBetweenSelectedAndComparison: Double
         get() = daysBetweenSelectedAndComparison / LunarAstronomer.SYNODIC_MONTH_DAYS
+
+    val activeGradientStops: List<ColorSwatchSpec>
+        get() = customGradientPresetStops
+            ?: ColorHarmonyEngine.buildDynamicGradientStops(activeColorSwatch, gradientVariantIndex)
 }
 
 class SeleniaViewModel : ViewModel() {
@@ -192,21 +208,76 @@ class SeleniaViewModel : ViewModel() {
     }
 
     fun updateColorFromRgb(r: Int, g: Int, b: Int) {
-        _uiState.update { it.copy(activeColorSwatch = ColorHarmonyEngine.fromRgb(r, g, b)) }
+        _uiState.update {
+            it.copy(
+                activeColorSwatch = ColorHarmonyEngine.fromRgb(r, g, b),
+                customGradientPresetStops = null
+            )
+        }
     }
 
     fun updateColorFromHsl(h: Float, s: Float, l: Float) {
-        _uiState.update { it.copy(activeColorSwatch = ColorHarmonyEngine.fromHsl(h, s, l)) }
+        _uiState.update {
+            it.copy(
+                activeColorSwatch = ColorHarmonyEngine.fromHsl(h, s, l),
+                customGradientPresetStops = null
+            )
+        }
     }
 
     fun updateColorFromCmyk(c: Int, m: Int, y: Int, k: Int) {
-        _uiState.update { it.copy(activeColorSwatch = ColorHarmonyEngine.fromCmyk(c, m, y, k)) }
+        _uiState.update {
+            it.copy(
+                activeColorSwatch = ColorHarmonyEngine.fromCmyk(c, m, y, k),
+                customGradientPresetStops = null
+            )
+        }
     }
 
     fun updateColorFromHex(hexInput: String) {
         val parsed = ColorHarmonyEngine.parseHexToRgb(hexInput) ?: return
         _uiState.update {
-            it.copy(activeColorSwatch = ColorHarmonyEngine.fromRgb(parsed.r, parsed.g, parsed.b))
+            it.copy(
+                activeColorSwatch = ColorHarmonyEngine.fromRgb(parsed.r, parsed.g, parsed.b),
+                customGradientPresetStops = null
+            )
+        }
+    }
+
+    fun setGradientStyle(style: GradientStyleType) {
+        _uiState.update { it.copy(gradientStyle = style) }
+    }
+
+    fun setGradientAngle(angleDeg: Int) {
+        _uiState.update { it.copy(gradientAngleDeg = angleDeg.coerceIn(0, 360)) }
+    }
+
+    fun setRadialFocalAndRadius(focalX: Float, focalY: Float, radiusFactor: Float) {
+        _uiState.update {
+            it.copy(
+                radialFocalX = focalX.coerceIn(0.1f, 0.9f),
+                radialFocalY = focalY.coerceIn(0.1f, 0.9f),
+                radialRadiusFactor = radiusFactor.coerceIn(0.3f, 1.6f)
+            )
+        }
+    }
+
+    fun cycleGradientHarmonyVariant() {
+        _uiState.update {
+            it.copy(
+                gradientVariantIndex = (it.gradientVariantIndex + 1) % 5,
+                customGradientPresetStops = null
+            )
+        }
+    }
+
+    fun applyGradientPreset(stops: List<ColorSwatchSpec>) {
+        if (stops.isEmpty()) return
+        _uiState.update {
+            it.copy(
+                activeColorSwatch = stops.first(),
+                customGradientPresetStops = stops
+            )
         }
     }
 
