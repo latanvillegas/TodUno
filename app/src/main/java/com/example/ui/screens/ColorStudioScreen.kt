@@ -1607,12 +1607,18 @@ private fun ModuleSkinApplicationCard(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                com.example.ui.components.SeleniaModule3DIcon(
+                    destination = com.example.ui.AppDestination.COLORS,
+                    selected = true,
+                    size = 30.dp,
+                    customAccent = activeColor
+                )
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "🎨 Aplicar a la Interfaz (Cada Módulo a su Manera)",
+                        text = "Aplicar a la Interfaz (Cada Módulo a su Manera)",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = activeColor
@@ -1625,7 +1631,7 @@ private fun ModuleSkinApplicationCard(
                 }
             }
 
-            // Target selector chips
+            // Target selector chips with 3D polychromatic icons
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
@@ -1637,15 +1643,14 @@ private fun ModuleSkinApplicationCard(
                     } else {
                         uiState.skinFor(target).isCustomApplied
                     }
-                    val targetIcon = target.iconVector()
                     FilterChip(
                         selected = isSelected,
                         onClick = { onSelectTarget(target) },
                         leadingIcon = {
-                            Icon(
-                                imageVector = targetIcon,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
+                            com.example.ui.components.SeleniaModule3DTargetIcon(
+                                target = target,
+                                size = 20.dp,
+                                customAccent = if (hasCustom) activeColor else null
                             )
                         },
                         label = {
@@ -1694,13 +1699,11 @@ private fun ModuleSkinApplicationCard(
                             alphaIntensity = 0.85f,
                             modifier = Modifier.fillMaxSize()
                         )
-                        Icon(
-                            imageVector = selectedTarget.iconVector(),
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier
-                                .size(26.dp)
-                                .align(Alignment.Center)
+                        com.example.ui.components.SeleniaModule3DTargetIcon(
+                            target = selectedTarget,
+                            size = 34.dp,
+                            customAccent = activeColor,
+                            modifier = Modifier.align(Alignment.Center)
                         )
                     }
 
@@ -1729,7 +1732,7 @@ private fun ModuleSkinApplicationCard(
                 }
             }
 
-            // Per-module status strip showing current color & gradient assigned to each of the 4 modules
+            // Per-module status strip showing current 3D icon, color & gradient assigned to each of the 4 modules
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1763,20 +1766,19 @@ private fun ModuleSkinApplicationCard(
                         Column(
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                            verticalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(10.dp)
-                                        .clip(CircleShape)
-                                        .background(swatchColor)
+                                com.example.ui.components.SeleniaModule3DTargetIcon(
+                                    target = mod,
+                                    size = 18.dp,
+                                    customAccent = if (modSkin.isCustomApplied) swatchColor else null
                                 )
                                 Text(
-                                    text = mod.spanishTitle,
+                                    text = mod.shortBadge,
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1,

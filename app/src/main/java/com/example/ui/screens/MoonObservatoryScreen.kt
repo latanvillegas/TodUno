@@ -59,12 +59,14 @@ import com.example.domain.MoonPhaseType
 import com.example.domain.SimpleDate
 import com.example.ui.ModuleThemeTarget
 import com.example.ui.SeleniaUiState
+import com.example.ui.components.LunarAtmospherePreset
 import com.example.ui.components.ModuleSkinBox
 import com.example.ui.components.MoonPhaseBadgeIcon
 import com.example.ui.components.RealisticMoonCanvas
 import com.example.ui.components.SeleniaIconBadge
 import com.example.ui.components.accentColor
 import com.example.ui.components.iconVector
+import com.example.ui.components.recommendedCalendarLitColor
 import kotlin.math.roundToInt
 
 @Composable
@@ -79,20 +81,42 @@ fun MoonObservatoryScreen(
 ) {
     val info = uiState.selectedDayLunarInfo
     val skin = uiState.skinFor(ModuleThemeTarget.MOON_OBSERVATORY)
-    val customMoonLitColor = if (skin.isCustomApplied) {
-        Color(skin.primarySwatch.rgb.r, skin.primarySwatch.rgb.g, skin.primarySwatch.rgb.b)
-    } else {
-        Color(0xFFF7E7B4)
+
+    var selectedAtmosphere by rememberSaveable {
+        mutableStateOf(LunarAtmospherePreset.AUTO_PHASE)
     }
-    val customMoonHighlight = if (skin.isCustomApplied) {
-        val sec = skin.secondarySwatch.rgb
-        Color(
-            red = ((sec.r + 255) / 2).coerceIn(0, 255),
-            green = ((sec.g + 255) / 2).coerceIn(0, 255),
-            blue = ((sec.b + 255) / 2).coerceIn(0, 255)
-        )
+
+    val phaseDynamicColor = info.phaseType.recommendedCalendarLitColor()
+
+    val customMoonLitColor = when {
+        skin.isCustomApplied -> Color(skin.primarySwatch.rgb.r, skin.primarySwatch.rgb.g, skin.primarySwatch.rgb.b)
+        selectedAtmosphere == LunarAtmospherePreset.AUTO_PHASE -> phaseDynamicColor
+        else -> selectedAtmosphere.litColor
+    }
+
+    val customMoonHighlight = when {
+        skin.isCustomApplied -> {
+            val sec = skin.secondarySwatch.rgb
+            Color(
+                red = ((sec.r + 255) / 2).coerceIn(0, 255),
+                green = ((sec.g + 255) / 2).coerceIn(0, 255),
+                blue = ((sec.b + 255) / 2).coerceIn(0, 255)
+            )
+        }
+        selectedAtmosphere == LunarAtmospherePreset.AUTO_PHASE -> Color(0xFFFFFDE7)
+        else -> selectedAtmosphere.highlightColor
+    }
+
+    val customMoonShadow = if (skin.isCustomApplied) {
+        Color(0xFF101733)
     } else {
-        Color(0xFFFFF8E1)
+        selectedAtmosphere.shadowColor
+    }
+
+    val customCoronaSecondary = if (skin.isCustomApplied) {
+        Color(skin.secondarySwatch.rgb.r, skin.secondarySwatch.rgb.g, skin.secondarySwatch.rgb.b)
+    } else {
+        selectedAtmosphere.coronaSecondaryColor
     }
 
     Box(
@@ -107,7 +131,7 @@ fun MoonObservatoryScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 1. Hero Lunar Sphere & Interactive Date Stepper with custom Moon Skin
+            // 1. Hero Lunar Sphere & Interactive Date Stepper with custom Moon Skin + 6 3D Atmospheres
             item {
                 Card(
                     shape = MaterialTheme.shapes.extraLarge,
@@ -198,13 +222,13 @@ fun MoonObservatoryScreen(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
 
-                            // Large Realistic Moon Canvas tinted with the Moon Module's custom color!
+                            // Large 3D Realistic Moon Canvas with craters, Tycho rays & astrolabe degree ring
                             Box(
                                 contentAlignment = Alignment.Center,
                                 modifier = Modifier
-                                    .size(220.dp)
+                                    .size(228.dp)
                                     .testTag("hero_moon_canvas")
                             ) {
                                 RealisticMoonCanvas(
@@ -212,19 +236,32 @@ fun MoonObservatoryScreen(
                                     isNorthernHemisphere = uiState.isNorthernHemisphere,
                                     showAmbientGlow = true,
                                     litColor = customMoonLitColor,
-                                    litHighlightColor = customMoonHighlight
+                                    litHighlightColor = customMoonHighlight,
+                                    shadowColor = customMoonShadow,
+                                    coronaSecondaryColor = customCoronaSecondary
                                 )
                             }
 
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            Text(
-                                text = "${info.phaseType.emoji} ${info.phaseType.spanishName}",
-                                style = MaterialTheme.typography.displaySmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                textAlign = TextAlign.Center,
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 modifier = Modifier.testTag("moon_phase_name_text")
-                            )
+                            ) {
+                                MoonPhaseBadgeIcon(
+                                    phaseType = info.phaseType,
+                                    size = 30.dp,
+                                    litColor = customMoonLitColor,
+                                    southernHemisphere = !uiState.isNorthernHemisphere
+                                )
+                                Text(
+                                    text = info.phaseType.spanishName,
+                                    style = MaterialTheme.typography.displaySmall,
+                                    color = customMoonLitColor,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
 
                             Text(
                                 text = uiState.selectedDate.formatSpanishLong().replaceFirstChar { it.uppercase() },
@@ -233,16 +270,51 @@ fun MoonObservatoryScreen(
                                 textAlign = TextAlign.Center
                             )
 
-                            if (skin.isCustomApplied) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "Luna personalizada: ${skin.primarySwatch.label} (${skin.primarySwatch.hex})",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.secondary
-                                )
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // 6-Mode 3D Lunar Atmosphere Selector Strip
+                            androidx.compose.foundation.lazy.LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                items(LunarAtmospherePreset.entries.size) { index ->
+                                    val preset = LunarAtmospherePreset.entries[index]
+                                    val isSelected = !skin.isCustomApplied && selectedAtmosphere == preset
+                                    val dotColor = if (preset == LunarAtmospherePreset.AUTO_PHASE) {
+                                        phaseDynamicColor
+                                    } else {
+                                        preset.litColor
+                                    }
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = { selectedAtmosphere = preset },
+                                        leadingIcon = {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(12.dp)
+                                                    .clip( androidx.compose.foundation.shape.CircleShape)
+                                                    .background(dotColor)
+                                            )
+                                        },
+                                        label = { Text(preset.shortChip) },
+                                        modifier = Modifier.testTag("moon_atmosphere_${preset.name.lowercase()}")
+                                    )
+                                }
                             }
 
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = if (skin.isCustomApplied) {
+                                    "Tema Estudio de Color activo: ${skin.primarySwatch.label} (${skin.primarySwatch.hex})"
+                                } else {
+                                    "${selectedAtmosphere.spanishName}: ${selectedAtmosphere.description}"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(14.dp))
 
                             // Date Stepper Row: -7d, -1d, +1d, +7d
                             Row(

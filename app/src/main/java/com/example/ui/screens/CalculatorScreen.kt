@@ -43,6 +43,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -52,12 +53,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.domain.CalculationRecord
+import com.example.domain.MoonPhaseType
 import com.example.domain.SimpleDate
 import com.example.ui.CalculatorMode
 import com.example.ui.ModuleThemeTarget
 import com.example.ui.ModuleVisualSkin
 import com.example.ui.SeleniaUiState
 import com.example.ui.components.ModuleSkinBox
+import com.example.ui.components.MoonPhaseBadgeIcon
 import com.example.ui.components.RealisticMoonCanvas
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -199,12 +202,20 @@ private fun ScientificCalculatorContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .border(
-                        width = 1.5.dp,
-                        color = if (skin.isCustomApplied) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.outline
-                        },
+                        width = 1.8.dp,
+                        brush = Brush.linearGradient(
+                            if (skin.isCustomApplied) {
+                                listOf(
+                                    Color(skin.primarySwatch.rgb.r, skin.primarySwatch.rgb.g, skin.primarySwatch.rgb.b),
+                                    Color(skin.secondarySwatch.rgb.r, skin.secondarySwatch.rgb.g, skin.secondarySwatch.rgb.b)
+                                )
+                            } else {
+                                listOf(
+                                    Color(0xFFFFD54F).copy(alpha = 0.85f),
+                                    Color(0xFF4DD0E1).copy(alpha = 0.75f)
+                                )
+                            }
+                        ),
                         shape = MaterialTheme.shapes.large
                     )
             ) {
@@ -273,13 +284,19 @@ private fun ScientificCalculatorContent(
                 )
                 AssistChip(
                     onClick = { onInputToken("29.5306") },
-                    label = { Text("🌙 29.53") },
+                    leadingIcon = {
+                        MoonPhaseBadgeIcon(
+                            phaseType = MoonPhaseType.WAXING_CRESCENT,
+                            size = 16.dp
+                        )
+                    },
+                    label = { Text("29.53") },
                     modifier = Modifier.testTag("calc_insert_synodic_constant")
                 )
             }
         }
 
-        // 3. Scientific & Standard Keypad
+        // 3. Scientific & Standard Keypad (3D Tactile Keycaps)
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(
@@ -334,17 +351,36 @@ private fun ScientificCalculatorContent(
                     Surface(
                         onClick = onBackspace,
                         shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        color = Color.Transparent,
                         modifier = Modifier
                             .weight(1f)
                             .height(54.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(
+                                        Color(0xFF283558),
+                                        Color(0xFF17203A)
+                                    )
+                                )
+                            )
+                            .border(
+                                width = 1.dp,
+                                brush = Brush.verticalGradient(
+                                    listOf(
+                                        Color(0xFF80DEEA).copy(alpha = 0.55f),
+                                        Color(0xFF10172B)
+                                    )
+                                ),
+                                shape = RoundedCornerShape(16.dp)
+                            )
                             .testTag("key_backspace")
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.Backspace,
                                 contentDescription = "Borrar",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                tint = Color(0xFF80DEEA)
                             )
                         }
                     }
@@ -510,30 +546,51 @@ private fun CalcKeyButton(
     tag: String,
     onClick: () -> Unit
 ) {
-    val containerColor = when {
-        isPrimaryEqual -> MaterialTheme.colorScheme.primary
-        isDanger -> MaterialTheme.colorScheme.error.copy(alpha = 0.22f)
-        isOperator -> MaterialTheme.colorScheme.secondaryContainer
-        isScientific -> MaterialTheme.colorScheme.surface
-        else -> MaterialTheme.colorScheme.surfaceVariant
+    val gradientColors = when {
+        isPrimaryEqual -> listOf(Color(0xFFFFD54F), Color(0xFFFFA000))
+        isDanger -> listOf(Color(0xFFD32F2F), Color(0xFF8E0000))
+        isOperator -> listOf(Color(0xFF00ACC1), Color(0xFF006064))
+        isScientific -> listOf(Color(0xFF39237E), Color(0xFF1F1347))
+        else -> listOf(Color(0xFF223052), Color(0xFF141C33))
+    }
+
+    val topSpecularColor = when {
+        isPrimaryEqual -> Color(0xFFFFF8E1).copy(alpha = 0.85f)
+        isDanger -> Color(0xFFFF8A80).copy(alpha = 0.70f)
+        isOperator -> Color(0xFF84FFFF).copy(alpha = 0.70f)
+        isScientific -> Color(0xFFB388FF).copy(alpha = 0.60f)
+        else -> Color(0xFF4DD0E1).copy(alpha = 0.35f)
     }
 
     val contentColor = when {
-        isPrimaryEqual -> MaterialTheme.colorScheme.onPrimary
-        isDanger -> MaterialTheme.colorScheme.error
-        isOperator -> MaterialTheme.colorScheme.onSecondaryContainer
-        isScientific -> MaterialTheme.colorScheme.secondary
-        else -> MaterialTheme.colorScheme.onSurface
+        isPrimaryEqual -> Color(0xFF101626)
+        isDanger -> Color(0xFFFFEBEE)
+        isOperator -> Color(0xFFE0F7FA)
+        isScientific -> Color(0xFFEDE7F6)
+        else -> Color(0xFFF4F7FF)
     }
 
     val height = if (isScientific) 44.dp else 54.dp
+    val keyShape = RoundedCornerShape(16.dp)
 
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
-        color = containerColor,
+        shape = keyShape,
+        color = Color.Transparent,
         modifier = modifier
             .height(height)
+            .clip(keyShape)
+            .background(Brush.verticalGradient(gradientColors))
+            .border(
+                width = 1.dp,
+                brush = Brush.verticalGradient(
+                    listOf(
+                        topSpecularColor,
+                        Color(0xFF0A0F1F).copy(alpha = 0.8f)
+                    )
+                ),
+                shape = keyShape
+            )
             .testTag(tag)
     ) {
         Box(contentAlignment = Alignment.Center) {
@@ -590,11 +647,20 @@ private fun DateAndLunarCalculatorContent(
                             color = MaterialTheme.colorScheme.primary
                         )
 
-                        Text(
-                            text = "Fecha base: ${uiState.selectedDate.formatSpanishLong().replaceFirstChar { it.uppercase() }} (${uiState.selectedDayLunarInfo.phaseType.emoji} ${uiState.selectedDayLunarInfo.phaseType.spanishName})",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            MoonPhaseBadgeIcon(
+                                phaseType = uiState.selectedDayLunarInfo.phaseType,
+                                size = 18.dp
+                            )
+                            Text(
+                                text = "Fecha base: ${uiState.selectedDate.formatSpanishLong().replaceFirstChar { it.uppercase() }} (${uiState.selectedDayLunarInfo.phaseType.spanishName})",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
 
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FilterChip(
@@ -688,11 +754,20 @@ private fun DateAndLunarCalculatorContent(
                                         color = MaterialTheme.colorScheme.onSurface,
                                         modifier = Modifier.testTag("computed_target_date_text")
                                     )
-                                    Text(
-                                        text = "${targetLunar.phaseType.emoji} ${targetLunar.phaseType.spanishName} • ${"%.1f".format(targetLunar.illuminationPercent)}% iluminada",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        MoonPhaseBadgeIcon(
+                                            phaseType = targetLunar.phaseType,
+                                            size = 15.dp
+                                        )
+                                        Text(
+                                            text = "${targetLunar.phaseType.spanishName} • ${"%.1f".format(targetLunar.illuminationPercent)}% iluminada",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -793,11 +868,20 @@ private fun DateAndLunarCalculatorContent(
                                     color = MaterialTheme.colorScheme.primary
                                 )
                             }
-                            Text(
-                                text = "🌕×${"%.1f".format(diffCycles)}",
-                                style = MaterialTheme.typography.titleLarge,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                MoonPhaseBadgeIcon(
+                                    phaseType = MoonPhaseType.FULL_MOON,
+                                    size = 24.dp
+                                )
+                                Text(
+                                    text = "×${"%.1f".format(diffCycles)}",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
                         }
                     }
                 }

@@ -38,6 +38,7 @@ import com.example.ui.components.MoonPhaseBadgeIcon
 import com.example.ui.components.SeleniaIconBadge
 import com.example.ui.components.accentColor
 import com.example.ui.components.iconVector
+import com.example.ui.components.recommendedCalendarLitColor
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -275,6 +276,7 @@ fun CalendarScreen(
                                                 isNorthernHemisphere = uiState.isNorthernHemisphere,
                                                 hasNotes = hasNotes,
                                                 moonLitColor = customMoonLitColor,
+                                                isCustomSkin = skin.isCustomApplied,
                                                 onClick = { onSelectDate(cell.date) },
                                                 modifier = Modifier.weight(1f)
                                             )
@@ -284,6 +286,34 @@ fun CalendarScreen(
                             }
                         }
                     }
+                }
+            }
+
+            // 1.5 Phase Color Legend Strip for Calendar Moons
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CalendarPhaseLegendBadge(
+                        color = Color(0xFF4DD0E1),
+                        label = "Nueva (Zafiro)"
+                    )
+                    CalendarPhaseLegendBadge(
+                        color = Color(0xFFFFD54F),
+                        label = "Creciente (Oro)"
+                    )
+                    CalendarPhaseLegendBadge(
+                        color = Color(0xFFFFB300),
+                        label = "Llena (Ámbar 3D)"
+                    )
+                    CalendarPhaseLegendBadge(
+                        color = Color(0xFF80DEEA),
+                        label = "Menguante (Plata-Cian)"
+                    )
                 }
             }
 
@@ -301,10 +331,15 @@ fun CalendarScreen(
                             modifier = Modifier.testTag("month_milestones_row")
                         ) {
                             items(uiState.monthMilestones) { milestone ->
+                                val phaseColor = if (skin.isCustomApplied) {
+                                    customMoonLitColor
+                                } else {
+                                    milestone.phaseType.recommendedCalendarLitColor()
+                                }
                                 MilestoneChipCard(
                                     milestone = milestone,
                                     isSelected = milestone.date == uiState.selectedDate,
-                                    moonLitColor = customMoonLitColor,
+                                    moonLitColor = phaseColor,
                                     isNorthernHemisphere = uiState.isNorthernHemisphere,
                                     onClick = { onSelectDate(milestone.date) }
                                 )
@@ -317,6 +352,11 @@ fun CalendarScreen(
             // 3. Selected Day Lunar & Almanac Inspector Card (with custom gradient skin)
             item {
                 val info = uiState.selectedDayLunarInfo
+                val selectedDayMoonColor = if (skin.isCustomApplied) {
+                    customMoonLitColor
+                } else {
+                    info.phaseType.recommendedCalendarLitColor()
+                }
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f)
@@ -353,7 +393,7 @@ fun CalendarScreen(
                                         phaseFraction = info.phaseFraction,
                                         isNorthernHemisphere = uiState.isNorthernHemisphere,
                                         showAmbientGlow = true,
-                                        litColor = customMoonLitColor
+                                        litColor = selectedDayMoonColor
                                     )
                                 }
 
@@ -368,16 +408,16 @@ fun CalendarScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        com.example.ui.components.MoonPhaseBadgeIcon(
+                                        MoonPhaseBadgeIcon(
                                             phaseType = info.phaseType,
                                             size = 22.dp,
-                                            litColor = customMoonLitColor,
+                                            litColor = selectedDayMoonColor,
                                             southernHemisphere = !uiState.isNorthernHemisphere
                                         )
                                         Text(
                                             text = info.phaseType.spanishName,
                                             style = MaterialTheme.typography.headlineSmall,
-                                            color = MaterialTheme.colorScheme.primary
+                                            color = selectedDayMoonColor
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(4.dp))
@@ -624,26 +664,58 @@ fun CalendarScreen(
 }
 
 @Composable
+private fun CalendarPhaseLegendBadge(
+    color: Color,
+    label: String
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(color)
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
 private fun CalendarDayCellItem(
     cell: CalendarDayCell,
     isSelected: Boolean,
     isNorthernHemisphere: Boolean,
     hasNotes: Boolean,
     moonLitColor: Color,
+    isCustomSkin: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val effectiveCellMoonColor = if (isCustomSkin) {
+        moonLitColor
+    } else {
+        cell.lunarInfo.phaseType.recommendedCalendarLitColor()
+    }
+
     val borderColor = when {
         isSelected -> MaterialTheme.colorScheme.primary
         cell.isToday -> MaterialTheme.colorScheme.secondary
         cell.lunarInfo.isExactMajorPhaseDay && cell.isCurrentMonth ->
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+            effectiveCellMoonColor.copy(alpha = 0.65f)
         else -> Color.Transparent
     }
 
     val containerColor = when {
         isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
         cell.isToday -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f)
+        cell.lunarInfo.isExactMajorPhaseDay && cell.isCurrentMonth ->
+            effectiveCellMoonColor.copy(alpha = 0.12f)
         cell.isCurrentMonth -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
         else -> MaterialTheme.colorScheme.background.copy(alpha = 0.25f)
     }
@@ -669,19 +741,19 @@ private fun CalendarDayCellItem(
         Text(
             text = cell.date.day.toString(),
             style = MaterialTheme.typography.labelLarge,
-            fontWeight = if (isSelected || cell.isToday) FontWeight.Bold else FontWeight.Medium,
+            fontWeight = if (isSelected || cell.isToday || cell.lunarInfo.isExactMajorPhaseDay) FontWeight.Bold else FontWeight.Medium,
             color = (if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                 .copy(alpha = textAlpha)
         )
 
         Spacer(modifier = Modifier.height(2.dp))
 
-        Box(modifier = Modifier.size(20.dp)) {
+        Box(modifier = Modifier.size(if (cell.lunarInfo.isExactMajorPhaseDay) 23.dp else 20.dp)) {
             RealisticMoonCanvas(
                 phaseFraction = cell.lunarInfo.phaseFraction,
                 isNorthernHemisphere = isNorthernHemisphere,
-                showAmbientGlow = false,
-                litColor = moonLitColor
+                showAmbientGlow = cell.lunarInfo.isExactMajorPhaseDay && cell.isCurrentMonth,
+                litColor = effectiveCellMoonColor
             )
         }
 
@@ -696,7 +768,7 @@ private fun CalendarDayCellItem(
                     modifier = Modifier
                         .size(5.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary)
+                        .background(effectiveCellMoonColor)
                 )
             }
             if (hasNotes) {

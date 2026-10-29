@@ -229,13 +229,23 @@ fun SeleniaApp(
                     ) {
                         navItems.forEach { item ->
                             val selected = uiState.currentDestination == item.destination
+                            val itemSkin = uiState.skinForDestination(item.destination)
+                            val customAccent = if (itemSkin?.isCustomApplied == true) {
+                                Color(
+                                    itemSkin.primarySwatch.rgb.r,
+                                    itemSkin.primarySwatch.rgb.g,
+                                    itemSkin.primarySwatch.rgb.b
+                                )
+                            } else null
                             NavigationRailItem(
                                 selected = selected,
                                 onClick = { viewModel.navigateTo(item.destination) },
                                 icon = {
-                                    Icon(
-                                        imageVector = if (selected) item.selectedIcon else item.unselectedIcon,
-                                        contentDescription = stringResource(item.labelRes)
+                                    com.example.ui.components.SeleniaModule3DIcon(
+                                        destination = item.destination,
+                                        selected = selected,
+                                        size = if (selected) 30.dp else 26.dp,
+                                        customAccent = customAccent
                                     )
                                 },
                                 label = { Text(stringResource(item.labelRes)) },
@@ -273,21 +283,31 @@ fun SeleniaApp(
                         ) {
                             navItems.forEach { item ->
                                 val selected = uiState.currentDestination == item.destination
+                                val itemSkin = uiState.skinForDestination(item.destination)
+                                val customAccent = if (itemSkin?.isCustomApplied == true) {
+                                    Color(
+                                        itemSkin.primarySwatch.rgb.r,
+                                        itemSkin.primarySwatch.rgb.g,
+                                        itemSkin.primarySwatch.rgb.b
+                                    )
+                                } else null
                                 NavigationBarItem(
                                     selected = selected,
                                     onClick = { viewModel.navigateTo(item.destination) },
                                     icon = {
-                                        Icon(
-                                            imageVector = if (selected) item.selectedIcon else item.unselectedIcon,
-                                            contentDescription = stringResource(item.labelRes)
+                                        com.example.ui.components.SeleniaModule3DIcon(
+                                            destination = item.destination,
+                                            selected = selected,
+                                            size = if (selected) 30.dp else 26.dp,
+                                            customAccent = customAccent
                                         )
                                     },
                                     label = { Text(stringResource(item.labelRes)) },
                                     colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = MaterialTheme.colorScheme.onPrimary,
+                                        selectedIconColor = Color.Unspecified,
                                         selectedTextColor = MaterialTheme.colorScheme.primary,
-                                        indicatorColor = MaterialTheme.colorScheme.primary,
-                                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
+                                        unselectedIconColor = Color.Unspecified,
                                         unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                                     ),
                                     modifier = Modifier.testTag(item.testTag)

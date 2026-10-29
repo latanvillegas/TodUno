@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -357,6 +359,68 @@ fun ClockScreen(
     }
 }
 
+enum class WatchDialPreset(
+    val spanishTitle: String,
+    val dialCenterColor: Color,
+    val dialEdgeColor: Color,
+    val bezelGoldColor: Color,
+    val innerRingColor: Color,
+    val hourHandColor: Color,
+    val minuteHandColor: Color,
+    val secondHandColor: Color
+) {
+    SAPPHIRE_ASTRAL(
+        spanishTitle = "Zafiro Astral",
+        dialCenterColor = Color(0xFF1F387A),
+        dialEdgeColor = Color(0xFF0A1228),
+        bezelGoldColor = Color(0xFFFFD54F),
+        innerRingColor = Color(0xFF4DD0E1),
+        hourHandColor = Color(0xFFFFD54F),
+        minuteHandColor = Color(0xFFF4F7FF),
+        secondHandColor = Color(0xFFFF5252)
+    ),
+    IMPERIAL_GOLD(
+        spanishTitle = "Oro Imperial",
+        dialCenterColor = Color(0xFF4C3510),
+        dialEdgeColor = Color(0xFF1A1105),
+        bezelGoldColor = Color(0xFFFFCA28),
+        innerRingColor = Color(0xFFFFE082),
+        hourHandColor = Color(0xFFFFD54F),
+        minuteHandColor = Color(0xFFFFF8E1),
+        secondHandColor = Color(0xFFFF6E40)
+    ),
+    EMERALD_BOREAL(
+        spanishTitle = "Esmeralda Boreal",
+        dialCenterColor = Color(0xFF0E443A),
+        dialEdgeColor = Color(0xFF061B18),
+        bezelGoldColor = Color(0xFF69F0AE),
+        innerRingColor = Color(0xFF4DD0E1),
+        hourHandColor = Color(0xFF69F0AE),
+        minuteHandColor = Color(0xFFE0F2F1),
+        secondHandColor = Color(0xFFFFD54F)
+    ),
+    RUBY_METEORITE(
+        spanishTitle = "Rubí Meteorito",
+        dialCenterColor = Color(0xFF4F132A),
+        dialEdgeColor = Color(0xFF1E0711),
+        bezelGoldColor = Color(0xFFFF8A80),
+        innerRingColor = Color(0xFFFFB300),
+        hourHandColor = Color(0xFFFFCA28),
+        minuteHandColor = Color(0xFFFCE4EC),
+        secondHandColor = Color(0xFF40C4FF)
+    ),
+    SIDEREAL_CYAN(
+        spanishTitle = "Cian Sideral",
+        dialCenterColor = Color(0xFF0B3752),
+        dialEdgeColor = Color(0xFF051624),
+        bezelGoldColor = Color(0xFF40C4FF),
+        innerRingColor = Color(0xFFB388FF),
+        hourHandColor = Color(0xFF80D8FF),
+        minuteHandColor = Color(0xFFE1F5FE),
+        secondHandColor = Color(0xFFFF5252)
+    )
+}
+
 @Composable
 private fun AstronomicalAndWorldClockContent(
     currentMillis: Long,
@@ -368,6 +432,8 @@ private fun AstronomicalAndWorldClockContent(
     onToggle24Hour: () -> Unit,
     onOpenColorCustomizer: () -> Unit
 ) {
+    var selectedDialPreset by rememberSaveable { mutableStateOf(WatchDialPreset.SAPPHIRE_ASTRAL) }
+
     // Reuse Calendar instances instead of allocating new objects every 250ms tick
     val localCal = remember { Calendar.getInstance() }
     val utcCal = remember { Calendar.getInstance(TimeZone.getTimeZone("UTC")) }
@@ -441,7 +507,7 @@ private fun AstronomicalAndWorldClockContent(
     val watchLitColor = if (skin.isCustomApplied) {
         Color(skin.primarySwatch.rgb.r, skin.primarySwatch.rgb.g, skin.primarySwatch.rgb.b)
     } else {
-        Color(0xFFF7E7B4)
+        selectedDialPreset.bezelGoldColor
     }
 
     LazyColumn(
@@ -451,7 +517,7 @@ private fun AstronomicalAndWorldClockContent(
         verticalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = PaddingValues(bottom = 20.dp)
     ) {
-        // 1. Hero Moonphase Astronomical Watch Card with custom Clock Skin
+        // 1. Hero Moonphase Astronomical Watch Card with custom Clock Skin & 3D Dial Presets
         item {
             Card(
                 shape = MaterialTheme.shapes.extraLarge,
@@ -524,6 +590,44 @@ private fun AstronomicalAndWorldClockContent(
                             }
                         }
 
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // 5-Mode 3D Horology Dial Preset Selector
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("watch_dial_preset_row")
+                        ) {
+                            items(WatchDialPreset.entries) { preset ->
+                                val isSelected = selectedDialPreset == preset
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { selectedDialPreset = preset },
+                                    leadingIcon = {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(12.dp)
+                                                .clip(CircleShape)
+                                                .background(
+                                                    Brush.radialGradient(
+                                                        listOf(preset.bezelGoldColor, preset.dialCenterColor)
+                                                    )
+                                                )
+                                                .border(1.dp, preset.innerRingColor, CircleShape)
+                                        )
+                                    },
+                                    label = {
+                                        Text(
+                                            text = preset.spanishTitle,
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    },
+                                    modifier = Modifier.testTag("watch_dial_chip_${preset.name.lowercase()}")
+                                )
+                            }
+                        }
+
                         Spacer(modifier = Modifier.height(10.dp))
 
                         // Analog Astrolabe Watch Face with custom Dial Gradient & Hands
@@ -538,7 +642,8 @@ private fun AstronomicalAndWorldClockContent(
                                 minute = minute,
                                 second = second,
                                 millis = millis,
-                                skin = skin
+                                skin = skin,
+                                dialPreset = selectedDialPreset
                             )
 
                             Column(
@@ -550,7 +655,7 @@ private fun AstronomicalAndWorldClockContent(
                                         .size(34.dp)
                                         .clip(CircleShape)
                                         .background(MaterialTheme.colorScheme.background)
-                                        .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), CircleShape)
+                                        .border(1.dp, selectedDialPreset.bezelGoldColor.copy(alpha = 0.75f), CircleShape)
                                         .padding(2.dp)
                                 ) {
                                     RealisticMoonCanvas(
@@ -563,7 +668,7 @@ private fun AstronomicalAndWorldClockContent(
                                 Text(
                                     text = moonPhaseName,
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary
+                                    color = selectedDialPreset.bezelGoldColor
                                 )
                             }
                         }
@@ -573,12 +678,12 @@ private fun AstronomicalAndWorldClockContent(
                         Text(
                             text = formattedDigitalTime,
                             style = MaterialTheme.typography.displayMedium,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = if (skin.isCustomApplied) MaterialTheme.colorScheme.primary else selectedDialPreset.bezelGoldColor,
                             modifier = Modifier.testTag("digital_clock_display")
                         )
 
                         Text(
-                            text = "Zona local: ${TimeZone.getDefault().id}",
+                            text = "Zona local: ${TimeZone.getDefault().id} • Esfera: ${selectedDialPreset.spanishTitle}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -607,7 +712,7 @@ private fun AstronomicalAndWorldClockContent(
                                         text = utcFormatted,
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.secondary
+                                        color = selectedDialPreset.innerRingColor
                                     )
                                 }
                             }
@@ -630,7 +735,7 @@ private fun AstronomicalAndWorldClockContent(
                                         text = gmstString,
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
+                                        color = selectedDialPreset.bezelGoldColor
                                     )
                                 }
                             }
@@ -729,62 +834,112 @@ private fun AstronomicalAnalogClockCanvas(
     minute: Int,
     second: Int,
     millis: Int,
-    skin: ModuleVisualSkin
+    skin: ModuleVisualSkin,
+    dialPreset: WatchDialPreset
 ) {
-    val goldColor = MaterialTheme.colorScheme.primary
-    val cyanColor = MaterialTheme.colorScheme.secondary
-    val surfaceColor = MaterialTheme.colorScheme.background
-    val markerColor = MaterialTheme.colorScheme.onSurface
+    val bezelGold = if (skin.isCustomApplied) {
+        val p = skin.primarySwatch.rgb
+        Color(p.r, p.g, p.b)
+    } else {
+        dialPreset.bezelGoldColor
+    }
+    val innerCyan = if (skin.isCustomApplied) {
+        val s = skin.secondarySwatch.rgb
+        Color(s.r, s.g, s.b)
+    } else {
+        dialPreset.innerRingColor
+    }
 
     val dialCenterColor = if (skin.isCustomApplied) {
         val p = skin.primarySwatch.rgb
-        Color(p.r, p.g, p.b).copy(alpha = 0.35f)
+        Color(p.r, p.g, p.b).copy(alpha = 0.42f)
     } else {
-        Color(0xFF1A2550)
+        dialPreset.dialCenterColor
     }
+    val dialEdgeColor = dialPreset.dialEdgeColor
+    val hourHandColor = if (skin.isCustomApplied) bezelGold else dialPreset.hourHandColor
+    val minuteHandColor = dialPreset.minuteHandColor
+    val secondHandColor = dialPreset.secondHandColor
 
     Canvas(modifier = Modifier.fillMaxSize()) {
         val radius = size.minDimension / 2f
         val center = Offset(size.width / 2f, size.height / 2f)
 
-        // Dial background with custom skin tint
+        // 1. 3D Outer Metallic Bezel Halo
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    bezelGold.copy(alpha = 0.25f),
+                    Color.Transparent
+                ),
+                center = center,
+                radius = radius
+            ),
+            radius = radius,
+            center = center
+        )
+
+        // 2. 3D Sunburst Dial Background with off-center light source
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
                     dialCenterColor,
-                    surfaceColor
+                    dialEdgeColor
                 ),
-                center = center,
-                radius = radius
+                center = Offset(center.x - radius * 0.22f, center.y - radius * 0.22f),
+                radius = radius * 1.15f
             ),
             radius = radius * 0.95f,
             center = center
         )
 
-        // Outer bezel rings
+        // 3. 3D Sapphire Crystal Specular Reflection Glare Arc (Upper-left dome highlight)
+        drawArc(
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    Color.White.copy(alpha = 0.20f),
+                    innerCyan.copy(alpha = 0.08f),
+                    Color.Transparent
+                ),
+                start = Offset(center.x - radius * 0.8f, center.y - radius * 0.8f),
+                end = center
+            ),
+            startAngle = 195f,
+            sweepAngle = 125f,
+            useCenter = true,
+            topLeft = Offset(center.x - radius * 0.91f, center.y - radius * 0.91f),
+            size = Size(radius * 1.82f, radius * 1.82f)
+        )
+
+        // 4. Outer & Inner Astrolabe Bezel Rings
         drawCircle(
-            color = goldColor.copy(alpha = 0.72f),
+            color = bezelGold.copy(alpha = 0.86f),
             radius = radius * 0.95f,
             center = center,
             style = OUTER_BEZEL_STROKE
         )
         drawCircle(
-            color = cyanColor.copy(alpha = 0.32f),
+            color = innerCyan.copy(alpha = 0.42f),
             radius = radius * 0.86f,
             center = center,
             style = INNER_BEZEL_STROKE
         )
 
-        // 60 minute / 12 hour ticks using precomputed cosine/sine LUT
+        // 5. 60 minute / 12 hour ticks + 4 Cardinal Luminous Jewels (12, 3, 6, 9)
         val outerR = radius * 0.90f
-        val majorInnerR = radius * 0.78f
+        val majorInnerR = radius * 0.77f
         val minorInnerR = radius * 0.85f
-        val minorTickColor = markerColor.copy(alpha = 0.35f)
+        val minorTickColor = minuteHandColor.copy(alpha = 0.35f)
         for (i in 0 until 60) {
             val cosA = WATCH_TICK_COS[i]
             val sinA = WATCH_TICK_SIN[i]
+            val isCardinal = i % 15 == 0
             val isMajorHour = i % 5 == 0
-            val innerR = if (isMajorHour) majorInnerR else minorInnerR
+            val innerR = when {
+                isCardinal -> radius * 0.74f
+                isMajorHour -> majorInnerR
+                else -> minorInnerR
+            }
             val start = Offset(
                 x = center.x + innerR * cosA,
                 y = center.y + innerR * sinA
@@ -794,10 +949,18 @@ private fun AstronomicalAnalogClockCanvas(
                 y = center.y + outerR * sinA
             )
             drawLine(
-                color = if (isMajorHour) goldColor else minorTickColor,
+                color = when {
+                    isCardinal -> innerCyan
+                    isMajorHour -> bezelGold
+                    else -> minorTickColor
+                },
                 start = start,
                 end = end,
-                strokeWidth = if (isMajorHour) 3.5f else 1.5f,
+                strokeWidth = when {
+                    isCardinal -> 4.8f
+                    isMajorHour -> 3.4f
+                    else -> 1.4f
+                },
                 cap = StrokeCap.Round
             )
         }
@@ -806,57 +969,98 @@ private fun AstronomicalAnalogClockCanvas(
         val smoothMinute = minute + (smoothSecond / 60f)
         val smoothHour = (hour % 12) + (smoothMinute / 60f)
 
-        // Hour hand
+        // 6. 3D Hour Hand (Drop Shadow + Gold Body + Luminous Spine)
         val hourAngle = (smoothHour * 30.0 - 90.0) * (PI / 180.0)
+        val hourEnd = Offset(
+            x = center.x + (radius * 0.49f * cos(hourAngle)).toFloat(),
+            y = center.y + (radius * 0.49f * sin(hourAngle)).toFloat()
+        )
         drawLine(
-            color = goldColor,
-            start = center,
-            end = Offset(
-                x = center.x + (radius * 0.48f * cos(hourAngle)).toFloat(),
-                y = center.y + (radius * 0.48f * sin(hourAngle)).toFloat()
-            ),
-            strokeWidth = 7f,
+            color = Color.Black.copy(alpha = 0.45f),
+            start = Offset(center.x + 2f, center.y + 3f),
+            end = Offset(hourEnd.x + 2f, hourEnd.y + 3f),
+            strokeWidth = 8.5f,
             cap = StrokeCap.Round
         )
-
-        // Minute hand
-        val minAngle = (smoothMinute * 6.0 - 90.0) * (PI / 180.0)
         drawLine(
-            color = markerColor,
+            color = hourHandColor,
             start = center,
-            end = Offset(
-                x = center.x + (radius * 0.68f * cos(minAngle)).toFloat(),
-                y = center.y + (radius * 0.68f * sin(minAngle)).toFloat()
-            ),
-            strokeWidth = 4.5f,
+            end = hourEnd,
+            strokeWidth = 7.5f,
             cap = StrokeCap.Round
         )
-
-        // Second hand
-        val secAngle = (smoothSecond * 6.0 - 90.0) * (PI / 180.0)
         drawLine(
-            color = cyanColor,
-            start = Offset(
-                x = center.x - (radius * 0.14f * cos(secAngle)).toFloat(),
-                y = center.y - (radius * 0.14f * sin(secAngle)).toFloat()
-            ),
+            color = Color.White.copy(alpha = 0.7f),
+            start = center,
             end = Offset(
-                x = center.x + (radius * 0.76f * cos(secAngle)).toFloat(),
-                y = center.y + (radius * 0.76f * sin(secAngle)).toFloat()
+                x = center.x + (radius * 0.36f * cos(hourAngle)).toFloat(),
+                y = center.y + (radius * 0.36f * sin(hourAngle)).toFloat()
             ),
             strokeWidth = 2.2f,
             cap = StrokeCap.Round
         )
 
+        // 7. 3D Minute Hand (Drop Shadow + Platinum/Luminous Body + Cyan Spine)
+        val minAngle = (smoothMinute * 6.0 - 90.0) * (PI / 180.0)
+        val minEnd = Offset(
+            x = center.x + (radius * 0.69f * cos(minAngle)).toFloat(),
+            y = center.y + (radius * 0.69f * sin(minAngle)).toFloat()
+        )
+        drawLine(
+            color = Color.Black.copy(alpha = 0.45f),
+            start = Offset(center.x + 2f, center.y + 3f),
+            end = Offset(minEnd.x + 2f, minEnd.y + 3f),
+            strokeWidth = 5.5f,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = minuteHandColor,
+            start = center,
+            end = minEnd,
+            strokeWidth = 4.8f,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = innerCyan.copy(alpha = 0.85f),
+            start = center,
+            end = Offset(
+                x = center.x + (radius * 0.52f * cos(minAngle)).toFloat(),
+                y = center.y + (radius * 0.52f * sin(minAngle)).toFloat()
+            ),
+            strokeWidth = 1.6f,
+            cap = StrokeCap.Round
+        )
+
+        // 8. 3D Chronograph Second Hand with Counterweight & Ruby Jewel Cap
+        val secAngle = (smoothSecond * 6.0 - 90.0) * (PI / 180.0)
+        drawLine(
+            color = secondHandColor,
+            start = Offset(
+                x = center.x - (radius * 0.16f * cos(secAngle)).toFloat(),
+                y = center.y - (radius * 0.16f * sin(secAngle)).toFloat()
+            ),
+            end = Offset(
+                x = center.x + (radius * 0.78f * cos(secAngle)).toFloat(),
+                y = center.y + (radius * 0.78f * sin(secAngle)).toFloat()
+            ),
+            strokeWidth = 2.4f,
+            cap = StrokeCap.Round
+        )
+
         drawCircle(
-            color = goldColor,
-            radius = 6.5f,
+            color = bezelGold,
+            radius = 7.5f,
             center = center
         )
         drawCircle(
-            color = surfaceColor,
-            radius = 2.5f,
+            color = secondHandColor,
+            radius = 4.2f,
             center = center
+        )
+        drawCircle(
+            color = Color.White,
+            radius = 1.6f,
+            center = Offset(center.x - 1.2f, center.y - 1.2f)
         )
     }
 }
