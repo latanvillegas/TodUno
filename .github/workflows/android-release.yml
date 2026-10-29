@@ -34,11 +34,13 @@ jobs:
 
       - name: Configurar Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
       - name: Aceptar licencias de Android SDK e instalar API 36.1
         run: |
           yes | sdkmanager --licenses || true
-          sdkmanager --install "platform-tools" "platforms;android-36.1" "build-tools;36.0.0" || yes | sdkmanager --licenses
+          sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Configurar Gradle 9.3.1
         uses: gradle/actions/setup-gradle@v4
