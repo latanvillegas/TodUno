@@ -7,32 +7,14 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccessTime
-import androidx.compose.material.icons.filled.Calculate
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.NightlightRound
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.outlined.AccessTime
-import androidx.compose.material.icons.outlined.Calculate
-import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material.icons.outlined.NightlightRound
-import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -40,26 +22,16 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.domain.ColorHarmonyEngine
 import com.example.ui.AppDestination
@@ -67,18 +39,12 @@ import com.example.ui.ModuleThemeTarget
 import com.example.ui.ModuleVisualSkin
 import com.example.ui.SeleniaUiState
 import com.example.ui.SeleniaViewModel
-import com.example.ui.components.RealisticMoonCanvas
 import com.example.ui.screens.CalculatorScreen
 import com.example.ui.screens.CalendarScreen
 import com.example.ui.screens.ClockScreen
 import com.example.ui.screens.ColorStudioScreen
 import com.example.ui.screens.MoonObservatoryScreen
 import com.example.ui.theme.ApplicationTheme
-import androidx.compose.ui.graphics.Color
-import kotlinx.coroutines.delay
-import java.util.Calendar
-import java.util.Locale
-import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -242,28 +208,17 @@ fun SeleniaApp(
                         }
                     }
 
-                    Column(modifier = Modifier.weight(1f)) {
-                        SeleniaTopHeader(
-                            uiState = uiState,
-                            onHeaderMoonClick = { viewModel.navigateTo(AppDestination.MOON_OBSERVATORY) },
-                            onHeaderClockClick = { viewModel.navigateTo(AppDestination.CLOCK) }
-                        )
-                        SeleniaMainContent(
-                            uiState = uiState,
-                            viewModel = viewModel,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
+                    SeleniaMainContent(
+                        uiState = uiState,
+                        viewModel = viewModel,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    )
                 }
             } else {
                 Scaffold(
-                    topBar = {
-                        SeleniaTopHeader(
-                            uiState = uiState,
-                            onHeaderMoonClick = { viewModel.navigateTo(AppDestination.MOON_OBSERVATORY) },
-                            onHeaderClockClick = { viewModel.navigateTo(AppDestination.CLOCK) }
-                        )
-                    },
+                    contentWindowInsets = WindowInsets.safeDrawing,
                     bottomBar = {
                         NavigationBar(
                             containerColor = MaterialTheme.colorScheme.surface,
@@ -311,165 +266,6 @@ fun SeleniaApp(
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun SeleniaTopHeader(
-    uiState: SeleniaUiState,
-    onHeaderMoonClick: () -> Unit,
-    onHeaderClockClick: () -> Unit
-) {
-    val moonSkin = uiState.skinFor(ModuleThemeTarget.MOON_OBSERVATORY)
-    val litTint = if (moonSkin.isCustomApplied) {
-        Color(moonSkin.primarySwatch.rgb.r, moonSkin.primarySwatch.rgb.g, moonSkin.primarySwatch.rgb.b)
-    } else null
-
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 4.dp,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                modifier = Modifier.weight(1f),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                com.example.ui.components.SeleniaBrandEmblem(
-                    size = 38.dp,
-                    primaryColor = MaterialTheme.colorScheme.primary,
-                    secondaryColor = MaterialTheme.colorScheme.secondary
-                )
-                Column {
-                    Text(
-                        text = stringResource(R.string.app_name),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = stringResource(R.string.subtitle_observatory),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                HeaderLiveClockBadge(
-                    is24HourFormat = uiState.is24HourFormat,
-                    onClick = onHeaderClockClick
-                )
-
-                Surface(
-                    onClick = onHeaderMoonClick,
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    shape = MaterialTheme.shapes.large,
-                    modifier = Modifier.testTag("header_live_moon_badge")
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.background,
-                            shape = CircleShape,
-                            modifier = Modifier
-                                .size(24.dp)
-                                .clip(CircleShape)
-                        ) {
-                            RealisticMoonCanvas(
-                                phaseFraction = uiState.selectedDayLunarInfo.phaseFraction,
-                                isNorthernHemisphere = uiState.isNorthernHemisphere,
-                                showAmbientGlow = false,
-                                litColor = litTint ?: Color(0xFFF7E7B4)
-                            )
-                        }
-                        Text(
-                            text = "${uiState.selectedDayLunarInfo.illuminationPercent.roundToInt()}%",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * Isolated composable for the 1Hz header clock badge:
- * - Uses lifecycle-aware repeatOnLifecycle(STARTED) so 0% battery is used in background.
- * - Aligns sleep duration to exact second boundary.
- * - Isolates state reads so the 1Hz tick only recomposes this badge and never recomposes
- *   the header's RealisticMoonCanvas or title.
- */
-@Composable
-private fun HeaderLiveClockBadge(
-    is24HourFormat: Boolean,
-    onClick: () -> Unit
-) {
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val reusableCal = remember { Calendar.getInstance() }
-    var liveTimeText by remember { mutableStateOf("") }
-
-    LaunchedEffect(is24HourFormat, lifecycleOwner) {
-        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            while (true) {
-                val now = System.currentTimeMillis()
-                reusableCal.timeInMillis = now
-                val h24 = reusableCal.get(Calendar.HOUR_OF_DAY)
-                val m = reusableCal.get(Calendar.MINUTE)
-                val s = reusableCal.get(Calendar.SECOND)
-                liveTimeText = if (is24HourFormat) {
-                    "%02d:%02d:%02d".format(Locale.US, h24, m, s)
-                } else {
-                    val h12 = if (h24 % 12 == 0) 12 else h24 % 12
-                    val amPm = if (h24 < 12) "AM" else "PM"
-                    "%02d:%02d %s".format(Locale.US, h12, m, amPm)
-                }
-                val sleepMs = (1000L - (now % 1000L)).coerceIn(100L, 1000L)
-                delay(sleepMs)
-            }
-        }
-    }
-
-    Surface(
-        onClick = onClick,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = MaterialTheme.shapes.large,
-        modifier = Modifier.testTag("header_live_clock_badge")
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Filled.AccessTime,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.size(15.dp)
-            )
-            Text(
-                text = liveTimeText,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.secondary
-            )
         }
     }
 }
