@@ -26,7 +26,7 @@ jobs:
           java-version: "21"
 
       - name: Configurar Android SDK (API 36.1)
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Aceptar licencias e instalar plataforma Android 36.1
         run: |
