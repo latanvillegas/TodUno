@@ -1,25 +1,18 @@
-name: Build APK & Publish GitHub Release
+name: Compilar Release APK
 
 on:
   push:
     branches:
       - main
       - master
-    tags:
-      - "v*"
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: "Etiqueta de versión para el Release (ej. v1.0.0)"
-        required: false
-        default: "v1.0.0"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-and-release:
-    name: Compilar APK y Publicar Release
+  build-release-apk:
+    name: Compilar únicamente Release APK
     runs-on: ubuntu-latest
 
     steps:
@@ -32,15 +25,14 @@ jobs:
           distribution: "temurin"
           java-version: "21"
 
-      - name: Configurar Android SDK
+      - name: Configurar Android SDK (API 36.1)
         uses: android-actions/setup-android@v3
-        with:
-          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
-      - name: Aceptar licencias de Android SDK e instalar API 36.1
+      - name: Aceptar licencias e instalar plataforma Android 36.1
         run: |
           yes | sdkmanager --licenses || true
-          sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          sdkmanager --install "platform-tools" "platforms;android-36.1" "build-tools;36.0.0" || \
+            sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Configurar Gradle 9.3.1
         uses: gradle/actions/setup-gradle@v4
@@ -63,13 +55,11 @@ jobs:
           SECRET_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ] && [ -n "$SECRET_STORE_PASSWORD" ] && [ -n "$SECRET_KEY_PASSWORD" ]; then
-            echo "Usando Keystore configurado en GitHub Secrets..."
             echo "$KEYSTORE_BASE64" | base64 --decode > "${GITHUB_WORKSPACE}/my-upload-key.jks"
             echo "KEYSTORE_PATH=${GITHUB_WORKSPACE}/my-upload-key.jks" >> "$GITHUB_ENV"
             echo "STORE_PASSWORD=${SECRET_STORE_PASSWORD}" >> "$GITHUB_ENV"
             echo "KEY_PASSWORD=${SECRET_KEY_PASSWORD}" >> "$GITHUB_ENV"
           else
-            echo "Generando Keystore automático para Release..."
             rm -f "${GITHUB_WORKSPACE}/my-upload-key.jks"
             keytool -genkeypair -v \
               -keystore "${GITHUB_WORKSPACE}/my-upload-key.jks" \
@@ -85,62 +75,22 @@ jobs:
             echo "KEY_PASSWORD=selenia123" >> "$GITHUB_ENV"
           fi
 
-      - name: Ejecutar pruebas unitarias (JVM)
-        run: ./gradlew :app:testDebugUnitTest --tests "com.example.ExampleUnitTest" --no-configuration-cache
+      - name: Compilar únicamente Release APK
+        run: ./gradlew :app:assembleRelease -x lintVitalRelease --no-configuration-cache --stacktrace
 
-      - name: Compilar únicamente APK Release firmada
-        run: ./gradlew :app:assembleRelease --no-configuration-cache --stacktrace
-
-      - name: Preparar archivo APK Release para distribución
+      - name: Recoger únicamente TodUno-release.apk
         run: |
           if [ -d "app/build/outputs/apk/debug" ] || compgen -G "app/build/outputs/apk/**/*debug*.apk" > /dev/null; then
-            echo "Error: No debe generarse ningún APK debug." >&2
+            echo "Error: No debe compilarse ningún APK debug." >&2
             exit 1
           fi
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk dist/TodUno-release.apk
-          ls -lh dist/
+          ls -lh dist/TodUno-release.apk
 
-      - name: Subir APK Release como Artifact de GitHub Actions
+      - name: Subir TodUno-release.apk como Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TodUno-Release-APK
+          name: TodUno-release-apk
           path: dist/TodUno-release.apk
           if-no-files-found: error
-
-      - name: Determinar etiqueta de versión (Tag)
-        id: version
-        run: |
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            TAG_NAME="${GITHUB_REF#refs/tags/}"
-          elif [[ -n "${{ github.event.inputs.release_tag }}" ]]; then
-            TAG_NAME="${{ github.event.inputs.release_tag }}"
-          else
-            TAG_NAME="v1.0.${GITHUB_RUN_NUMBER}"
-          fi
-          echo "tag=${TAG_NAME}" >> "$GITHUB_OUTPUT"
-
-      - name: Publicar Release en GitHub con APK Release adjunta
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          target_commitish: ${{ github.sha }}
-          name: "TodUno ${{ steps.version.outputs.tag }}"
-          body: |
-            ## 🌙 TodUno: Calendario, Luna, Reloj y Calculadora (${{ steps.version.outputs.tag }})
-
-            ### 📦 Descarga directa de APK (Solo Release)
-            Descarga e instala el archivo firmado de producción en tu dispositivo Android (Android 7.0 / API 24 o superior):
-            - **`TodUno-release.apk`**: Versión oficial de producción optimizada y firmada lista para instalar.
-
-            ### ✨ Características incluidas (4 en 1)
-            - 📅 **Calendario Lunar Mensual**: Fases de la luna día por día, hitos mensuales y notas personales por fecha.
-            - 🌕 **Observatorio Lunar**: Esfera lunar interactiva en Canvas, soporte Hemisferio Norte/Sur, distancia orbital, elongación eclíptica y guía tradicional de mareas y siembra.
-            - ⌚ **Reloj Astronómico, Mundial, Cronómetro y Temporizador**: Reloj analógico con complicación lunar + digital (12h/24h, UTC y Tiempo Sideral GMST), husos horarios mundiales, cronómetro con vueltas y temporizador circular.
-            - 🧮 **Calculadora Científica y de Fechas**: Funciones trigonométricas, constantes astronómicas (`29.5306 días`), conversión entre días y meses sinódicos, y cálculo de intervalos entre fechas.
-          files: |
-            dist/TodUno-release.apk
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

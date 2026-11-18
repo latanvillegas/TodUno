@@ -7,10 +7,14 @@ import java.util.Locale
 import kotlin.math.E
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.acos
+import kotlin.math.asin
+import kotlin.math.atan
 import kotlin.math.cos
 import kotlin.math.ln
 import kotlin.math.log10
 import kotlin.math.pow
+import kotlin.math.roundToLong
 import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.math.tan
@@ -36,6 +40,9 @@ object ScientificCalculatorEngine {
     private val MULTI_CHAR_TOKENS = listOf(
         "Error",
         "sqrt(",
+        "asin(",
+        "acos(",
+        "atan(",
         "sin(",
         "cos(",
         "tan(",
@@ -61,8 +68,8 @@ object ScientificCalculatorEngine {
     }
 
     /**
-     * Deletes an entire function token (e.g., `sin(`, `cos(`, `ln(`, `√(`) or `Error` in one press,
-     * falling back to single-character deletion for digits and operators.
+     * Deletes an entire function token (e.g., `asin(`, `sin(`, `log(`, `ln(`, `√(`) or `Error`
+     * in one press, falling back to single-character deletion for digits and operators.
      */
     fun smartBackspace(expression: String): String {
         if (expression.isEmpty()) return ""
@@ -76,8 +83,8 @@ object ScientificCalculatorEngine {
 
     /**
      * Evaluates a mathematical expression string supporting:
-     * +, -, ×, ÷, %, ^, parentheses, π, e, √, sin, cos, tan, ln, log, scientific E notation,
-     * and implicit multiplication.
+     * +, -, ×, ÷, %, !, ^, parentheses, π, e, √, sin, cos, tan, asin, acos, atan, ln, log,
+     * scientific E notation, and implicit multiplication.
      * Supports both Degrees ([isRadians] = false) and Radians ([isRadians] = true).
      */
     fun evaluate(rawExpression: String, isRadians: Boolean = false): Result<Double> {
@@ -97,9 +104,8 @@ object ScientificCalculatorEngine {
     }
 
     private fun normalizeExpression(raw: String): String {
-        val preReplaced = if (raw.contains("🌙")) raw.replace("🌙", "L") else raw
-        val compact = buildString(preReplaced.length) {
-            for (ch in preReplaced) {
+        val compact = buildString(raw.length) {
+            for (ch in raw) {
                 when (ch) {
                     ' ' -> Unit
                     '×', '⋅' -> append('*')
@@ -134,18 +140,33 @@ object ScientificCalculatorEngine {
             }
         }
 
-        val prevIsValueEnd = prev.isDigit() || prev == ')' || prev == '%' || prev == 'π' || prev == 'e' || prev == 'L'
-        val currIsValueStart = curr == '(' || curr == '√' || curr == 'π' || curr == 'L' || curr.isLetter()
-        val prevIsConstantOrClose = prev == ')' || prev == '%' || prev == 'π' || prev == 'e' || prev == 'L'
+        val prevIsValueEnd = prev.isDigit() || prev == ')' || prev == '%' || prev == '!' || prev == 'π' || prev == 'e'
+        val currIsValueStart = curr == '(' || curr == '√' || curr == 'π' || curr.isLetter()
+        val prevIsConstantOrClose = prev == ')' || prev == '%' || prev == '!' || prev == 'π' || prev == 'e'
         val currIsNumber = curr.isDigit() || curr == '.'
 
-        if (prev.isLetter() && prev != 'π' && prev != 'L' && curr.isLetter() && curr != 'π' && curr != 'L') {
+        if (prev.isLetter() && prev != 'π' && curr.isLetter() && curr != 'π') {
             return false
         }
-        if (prev.isLetter() && prev != 'π' && prev != 'e' && prev != 'L' && curr == '(') {
+        if (prev.isLetter() && prev != 'π' && prev != 'e' && curr == '(') {
             return false
         }
         return (prevIsValueEnd && currIsValueStart) || (prevIsConstantOrClose && currIsNumber)
+    }
+
+    private fun computeFactorial(value: Double): Double {
+        if (value.isNaN() || value < -1e-9 || value > 170.0) {
+            throw ArithmeticException("Factorial out of domain")
+        }
+        val rounded = value.roundToLong()
+        if (abs(value - rounded.toDouble()) > 1e-9 || rounded < 0L) {
+            throw ArithmeticException("Factorial requires non-negative integer")
+        }
+        var acc = 1.0
+        for (i in 2L..rounded) {
+            acc *= i.toDouble()
+        }
+        return acc
     }
 
     private class ExpressionParser(
@@ -232,10 +253,13 @@ object ScientificCalculatorEngine {
 
         private fun parsePostfix(): Double {
             var x = parsePrimary()
-            while (eat('%'.code)) {
-                x /= 100.0
+            while (true) {
+                when {
+                    eat('%'.code) -> x /= 100.0
+                    eat('!'.code) -> x = computeFactorial(x)
+                    else -> return x
+                }
             }
-            return x
         }
 
         private fun parsePrimary(): Double {
@@ -261,9 +285,6 @@ object ScientificCalculatorEngine {
             } else if (ch == 'π'.code) {
                 nextChar()
                 PI
-            } else if (ch == 'L'.code) {
-                nextChar()
-                LunarAstronomer.SYNODIC_MONTH_DAYS
             } else if (ch == '√'.code) {
                 nextChar()
                 val arg = parseUnary()
@@ -305,6 +326,24 @@ object ScientificCalculatorEngine {
                                 throw ArithmeticException("Tangent undefined at 90°")
                             }
                             if (abs(normDeg) < 1e-9) 0.0 else tan(radEquiv)
+                        }
+                        "asin" -> {
+                            if (arg < -1.0 || arg > 1.0) {
+                                throw ArithmeticException("Arcsine domain [-1, 1]")
+                            }
+                            val rad = asin(arg)
+                            if (isRadians) rad else Math.toDegrees(rad)
+                        }
+                        "acos" -> {
+                            if (arg < -1.0 || arg > 1.0) {
+                                throw ArithmeticException("Arccosine domain [-1, 1]")
+                            }
+                            val rad = acos(arg)
+                            if (isRadians) rad else Math.toDegrees(rad)
+                        }
+                        "atan" -> {
+                            val rad = atan(arg)
+                            if (isRadians) rad else Math.toDegrees(rad)
                         }
                         "ln" -> {
                             if (arg <= 0.0) throw ArithmeticException("Non-positive logarithm")

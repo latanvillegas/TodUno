@@ -12,6 +12,8 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Entity(
@@ -30,6 +32,8 @@ data class CalendarNoteEntity(
     val title: String,
     val category: String,
     val reminderEnabled: Boolean = false,
+    val reminderHour: Int = 9,
+    val reminderMinute: Int = 0,
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -49,20 +53,46 @@ data class CalculationHistoryEntity(
 
 @Dao
 interface SeleniaDao {
-    @Query("SELECT * FROM calendar_notes ORDER BY createdAt ASC")
+    @Query("SELECT * FROM calendar_notes ORDER BY reminderHour ASC, reminderMinute ASC, createdAt ASC")
     fun observeAllNotes(): Flow<List<CalendarNoteEntity>>
 
-    @Query("SELECT COUNT(*) FROM calendar_notes")
-    suspend fun countNotes(): Int
+    @Query("SELECT * FROM calendar_notes ORDER BY year ASC, month ASC, day ASC, reminderHour ASC, reminderMinute ASC, createdAt ASC")
+    suspend fun getAllNotesSnapshot(): List<CalendarNoteEntity>
+
+    @Query("SELECT * FROM calendar_notes WHERE reminderEnabled = 1 ORDER BY createdAt ASC")
+    suspend fun getNotesWithReminders(): List<CalendarNoteEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNote(note: CalendarNoteEntity): Long
+
+    @Query(
+        """
+        UPDATE calendar_notes
+        SET title = :title,
+            category = :category,
+            reminderEnabled = :reminderEnabled,
+            reminderHour = :reminderHour,
+            reminderMinute = :reminderMinute
+        WHERE id = :noteId
+        """
+    )
+    suspend fun updateNoteFields(
+        noteId: Long,
+        title: String,
+        category: String,
+        reminderEnabled: Boolean,
+        reminderHour: Int,
+        reminderMinute: Int
+    )
 
     @Query("DELETE FROM calendar_notes WHERE id = :noteId")
     suspend fun deleteNoteById(noteId: Long)
 
     @Query("SELECT * FROM calculation_history ORDER BY createdAt DESC LIMIT 30")
     fun observeCalculationHistory(): Flow<List<CalculationHistoryEntity>>
+
+    @Query("SELECT * FROM calculation_history ORDER BY createdAt DESC LIMIT 50")
+    suspend fun getAllHistorySnapshot(): List<CalculationHistoryEntity>
 
     @Query("SELECT COUNT(*) FROM calculation_history")
     suspend fun countHistory(): Int
@@ -98,13 +128,20 @@ interface SeleniaDao {
         CalendarNoteEntity::class,
         CalculationHistoryEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class SeleniaDatabase : RoomDatabase() {
     abstract fun seleniaDao(): SeleniaDao
 
     companion object {
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE calendar_notes ADD COLUMN reminderHour INTEGER NOT NULL DEFAULT 9")
+                db.execSQL("ALTER TABLE calendar_notes ADD COLUMN reminderMinute INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         @Volatile
         private var INSTANCE: SeleniaDatabase? = null
 
@@ -115,6 +152,7 @@ abstract class SeleniaDatabase : RoomDatabase() {
                     SeleniaDatabase::class.java,
                     "selenia_lunar_calc.db"
                 )
+                    .addMigrations(MIGRATION_3_4)
                     .fallbackToDestructiveMigration(true)
                     .build()
                     .also { INSTANCE = it }

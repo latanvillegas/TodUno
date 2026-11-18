@@ -6,10 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -19,16 +16,12 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -38,18 +31,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.semantics.Role
 import com.example.domain.LunarAstronomer
-import com.example.domain.SimpleDate
-import java.util.Calendar
-import java.util.TimeZone
 
 private val MONTH_ROWS_CHUNKED = LunarAstronomer.SPANISH_MONTHS.chunked(3)
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MonthYearPickerDialog(
     initialYear: Int,
@@ -188,53 +177,4 @@ fun MonthYearPickerDialog(
             }
         }
     )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun SeleniaCalendarDatePickerModal(
-    initialDate: SimpleDate,
-    onDismiss: () -> Unit,
-    onDateSelected: (SimpleDate) -> Unit
-) {
-    val utcZone = TimeZone.getTimeZone("UTC")
-    val initialMillis = Calendar.getInstance(utcZone).apply {
-        clear()
-        set(initialDate.year, initialDate.month - 1, initialDate.day, 12, 0, 0)
-    }.timeInMillis
-
-    val datePickerState = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
-
-    DatePickerDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            Button(
-                onClick = {
-                    val millis = datePickerState.selectedDateMillis
-                    if (millis != null) {
-                        val cal = Calendar.getInstance(utcZone).apply { timeInMillis = millis }
-                        onDateSelected(
-                            SimpleDate(
-                                year = cal.get(Calendar.YEAR),
-                                month = cal.get(Calendar.MONTH) + 1,
-                                day = cal.get(Calendar.DAY_OF_MONTH)
-                            )
-                        )
-                    } else {
-                        onDismiss()
-                    }
-                },
-                modifier = Modifier.testTag("confirm_date_picker_modal")
-            ) {
-                Text("Seleccionar")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancelar")
-            }
-        }
-    ) {
-        DatePicker(state = datePickerState)
-    }
 }

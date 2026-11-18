@@ -1,13 +1,14 @@
 package com.example.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,58 +17,47 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.domain.CalculationRecord
-import com.example.domain.MoonPhaseType
-import com.example.domain.SimpleDate
-import com.example.ui.CalculatorMode
 import com.example.ui.SeleniaUiState
-import com.example.ui.components.MoonPhaseBadgeIcon
-import com.example.ui.components.RealisticMoonCanvas
-import com.example.ui.components.SeleniaCalendarDatePickerModal
 import com.example.ui.components.SeleniaVectorIcons
-import kotlin.math.abs
-import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 
 @Immutable
 private data class CalcKeyStyle(
@@ -122,30 +112,18 @@ private val DISPLAY_BORDER_BRUSH = Brush.linearGradient(
     )
 )
 
-private val DAY_OFFSET_PRESETS = listOf(-30, -7, 7, 14, 29, 90)
-
 @Composable
 fun CalculatorScreen(
     uiState: SeleniaUiState,
-    onSetMode: (CalculatorMode) -> Unit,
     onToggleRadiansMode: () -> Unit = {},
+    onToggleInverseTrigMode: () -> Unit = {},
     onInputToken: (String) -> Unit,
     onInsertLastAnswer: () -> Unit = {},
     onClear: () -> Unit,
     onBackspace: () -> Unit,
     onEvaluate: (String?) -> Unit,
-    onConvertDaysToSynodic: () -> Unit,
-    onMultiplyBySynodic: () -> Unit,
     onUseHistoryItem: (CalculationRecord) -> Unit,
     onClearHistory: () -> Unit,
-    onSelectBaseDate: (SimpleDate) -> Unit = {},
-    onSetUseLunarCycleOffset: (Boolean) -> Unit,
-    onUpdateOffsetDays: (Int) -> Unit,
-    onUpdateOffsetLunarCycles: (Double) -> Unit,
-    onStepComparisonDate: (Int) -> Unit,
-    onSetComparisonStartDate: (SimpleDate) -> Unit = {},
-    onSetComparisonEndDate: (SimpleDate) -> Unit = {},
-    onJumpToDateInCalendar: (SimpleDate) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -159,71 +137,18 @@ fun CalculatorScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Mode Switcher: Científica vs Fechas y Ciclos Lunares
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                FilterChip(
-                    selected = uiState.calculatorMode == CalculatorMode.SCIENTIFIC,
-                    onClick = { onSetMode(CalculatorMode.SCIENTIFIC) },
-                    label = { Text(stringResource(R.string.calc_mode_standard)) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = SeleniaVectorIcons.Calculate,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("calc_mode_scientific_tab")
-                )
-                FilterChip(
-                    selected = uiState.calculatorMode == CalculatorMode.DATE_AND_LUNAR,
-                    onClick = { onSetMode(CalculatorMode.DATE_AND_LUNAR) },
-                    label = { Text(stringResource(R.string.calc_mode_dates)) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.DateRange,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("calc_mode_dates_tab")
-                )
-            }
-
-            if (uiState.calculatorMode == CalculatorMode.SCIENTIFIC) {
-                ScientificCalculatorContent(
-                    uiState = uiState,
-                    onToggleRadiansMode = onToggleRadiansMode,
-                    onInputToken = onInputToken,
-                    onInsertLastAnswer = onInsertLastAnswer,
-                    onClear = onClear,
-                    onBackspace = onBackspace,
-                    onEvaluate = onEvaluate,
-                    onConvertDaysToSynodic = onConvertDaysToSynodic,
-                    onMultiplyBySynodic = onMultiplyBySynodic,
-                    onUseHistoryItem = onUseHistoryItem,
-                    onClearHistory = onClearHistory
-                )
-            } else {
-                DateAndLunarCalculatorContent(
-                    uiState = uiState,
-                    onSelectBaseDate = onSelectBaseDate,
-                    onSetUseLunarCycleOffset = onSetUseLunarCycleOffset,
-                    onUpdateOffsetDays = onUpdateOffsetDays,
-                    onUpdateOffsetLunarCycles = onUpdateOffsetLunarCycles,
-                    onStepComparisonDate = onStepComparisonDate,
-                    onSetComparisonStartDate = onSetComparisonStartDate,
-                    onSetComparisonEndDate = onSetComparisonEndDate,
-                    onJumpToDateInCalendar = onJumpToDateInCalendar
-                )
-            }
+            ScientificCalculatorContent(
+                uiState = uiState,
+                onToggleRadiansMode = onToggleRadiansMode,
+                onToggleInverseTrigMode = onToggleInverseTrigMode,
+                onInputToken = onInputToken,
+                onInsertLastAnswer = onInsertLastAnswer,
+                onClear = onClear,
+                onBackspace = onBackspace,
+                onEvaluate = onEvaluate,
+                onUseHistoryItem = onUseHistoryItem,
+                onClearHistory = onClearHistory
+            )
         }
     }
 }
@@ -232,23 +157,43 @@ fun CalculatorScreen(
 private fun ScientificCalculatorContent(
     uiState: SeleniaUiState,
     onToggleRadiansMode: () -> Unit,
+    onToggleInverseTrigMode: () -> Unit,
     onInputToken: (String) -> Unit,
     onInsertLastAnswer: () -> Unit,
     onClear: () -> Unit,
     onBackspace: () -> Unit,
     onEvaluate: (String?) -> Unit,
-    onConvertDaysToSynodic: () -> Unit,
-    onMultiplyBySynodic: () -> Unit,
     onUseHistoryItem: (CalculationRecord) -> Unit,
     onClearHistory: () -> Unit
 ) {
+    val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
+    var copiedFeedback by remember { mutableStateOf(false) }
+
+    LaunchedEffect(copiedFeedback) {
+        if (copiedFeedback) {
+            delay(1600L)
+            copiedFeedback = false
+        }
+    }
+
+    fun copyResultToClipboard() {
+        val valueToCopy = uiState.liveResultPreview
+        if (valueToCopy.isBlank() || valueToCopy == "Error") return
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        clipboard?.setPrimaryClip(ClipData.newPlainText("TodUno Resultado", valueToCopy))
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        copiedFeedback = true
+    }
+
+    val isInv = uiState.isInverseTrigMode
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(bottom = 16.dp)
     ) {
-        // 1. Expression & Result Display Screen
+        // 1. Expression & Result Display Screen (tap result to copy)
         item(key = "calc_display") {
             Card(
                 colors = CardDefaults.cardColors(
@@ -275,7 +220,10 @@ private fun ScientificCalculatorContent(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (uiState.isRadiansMode) "Ángulo: RAD (Radianes)" else "Ángulo: DEG (Grados)",
+                            text = buildString {
+                                append(if (uiState.isRadiansMode) "Ángulo: RAD" else "Ángulo: DEG")
+                                if (isInv) append(" • INV activo")
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.secondary
@@ -307,99 +255,110 @@ private fun ScientificCalculatorContent(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
                             .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(role = Role.Button) { copyResultToClipboard() }
                             .testTag("calc_result_display")
                     )
                 }
             }
         }
 
-        // 2. DEG/RAD, Ans & Lunar Constant Quick Action Strip
+        // 2. DEG/RAD, INV, Ans & Copy Quick Action Strip
         item(key = "calc_quick_strip") {
-            LazyRow(
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                item(key = "chip_deg_rad") {
-                    FilterChip(
-                        selected = uiState.isRadiansMode,
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onToggleRadiansMode()
-                        },
-                        label = {
-                            Text(
-                                text = if (uiState.isRadiansMode) "RAD" else "DEG",
-                                fontWeight = FontWeight.Bold
-                            )
-                        },
-                        modifier = Modifier.testTag("calc_deg_rad_chip")
-                    )
-                }
-                item(key = "chip_ans") {
-                    AssistChip(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onInsertLastAnswer()
-                        },
-                        label = { Text("Ans") },
-                        modifier = Modifier.testTag("calc_ans_chip")
-                    )
-                }
-                item(key = "chip_mul_synodic") {
-                    AssistChip(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onMultiplyBySynodic()
-                        },
-                        label = { Text("× Luna (29.53d)") },
-                        modifier = Modifier.testTag("calc_multiply_synodic_chip")
-                    )
-                }
-                item(key = "chip_div_synodic") {
-                    AssistChip(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onConvertDaysToSynodic()
-                        },
-                        label = { Text("Días → Lunas") },
-                        modifier = Modifier.testTag("calc_days_to_lunas_chip")
-                    )
-                }
-                item(key = "chip_const_synodic") {
-                    AssistChip(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onInputToken("29.5306")
-                        },
-                        leadingIcon = {
-                            MoonPhaseBadgeIcon(
-                                phaseType = MoonPhaseType.WAXING_CRESCENT,
-                                size = 16.dp
-                            )
-                        },
-                        label = { Text("Constante Sinódica") },
-                        modifier = Modifier.testTag("calc_insert_synodic_constant")
-                    )
-                }
+                FilterChip(
+                    selected = uiState.isRadiansMode,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onToggleRadiansMode()
+                    },
+                    label = {
+                        Text(
+                            text = if (uiState.isRadiansMode) "RAD" else "DEG",
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    modifier = Modifier.testTag("calc_deg_rad_chip")
+                )
+                FilterChip(
+                    selected = isInv,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onToggleInverseTrigMode()
+                    },
+                    label = {
+                        Text(
+                            text = stringResource(R.string.calc_inv_label),
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    modifier = Modifier.testTag("calc_inv_chip")
+                )
+                AssistChip(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onInsertLastAnswer()
+                    },
+                    label = { Text("Ans") },
+                    modifier = Modifier.testTag("calc_ans_chip")
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                AssistChip(
+                    onClick = { copyResultToClipboard() },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = if (copiedFeedback) {
+                                Icons.Default.Check
+                            } else {
+                                SeleniaVectorIcons.ContentCopy
+                            },
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    },
+                    label = {
+                        Text(
+                            if (copiedFeedback) {
+                                stringResource(R.string.calc_copied_label)
+                            } else {
+                                stringResource(R.string.calc_copy_label)
+                            }
+                        )
+                    },
+                    modifier = Modifier.testTag("calc_copy_chip")
+                )
             }
         }
 
-        // 3. Scientific & Standard Keypad (3D Tactile Keycaps)
+        // 3. Scientific & Standard Keypad (3D Tactile Keycaps, INV-aware)
         item(key = "calc_keypad") {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    CalcKeyButton("sin(", Modifier.weight(1f), isScientific = true, tag = "key_sin") {
-                        onInputToken("sin(")
+                    val sinLabel = if (isInv) "sin⁻¹" else "sin("
+                    val sinToken = if (isInv) "asin(" else "sin("
+                    CalcKeyButton(sinLabel, Modifier.weight(1f), isScientific = true, tag = "key_sin") {
+                        onInputToken(sinToken)
                     }
-                    CalcKeyButton("cos(", Modifier.weight(1f), isScientific = true, tag = "key_cos") {
-                        onInputToken("cos(")
+
+                    val cosLabel = if (isInv) "cos⁻¹" else "cos("
+                    val cosToken = if (isInv) "acos(" else "cos("
+                    CalcKeyButton(cosLabel, Modifier.weight(1f), isScientific = true, tag = "key_cos") {
+                        onInputToken(cosToken)
                     }
-                    CalcKeyButton("tan(", Modifier.weight(1f), isScientific = true, tag = "key_tan") {
-                        onInputToken("tan(")
+
+                    val tanLabel = if (isInv) "tan⁻¹" else "tan("
+                    val tanToken = if (isInv) "atan(" else "tan("
+                    CalcKeyButton(tanLabel, Modifier.weight(1f), isScientific = true, tag = "key_tan") {
+                        onInputToken(tanToken)
                     }
+
                     CalcKeyButton("√(", Modifier.weight(1f), isScientific = true, tag = "key_sqrt") {
                         onInputToken("√(")
                     }
@@ -418,14 +377,21 @@ private fun ScientificCalculatorContent(
                     CalcKeyButton(")", Modifier.weight(1f), isScientific = true, tag = "key_close_paren") {
                         onInputToken(")")
                     }
-                    CalcKeyButton("π", Modifier.weight(1f), isScientific = true, tag = "key_pi") {
-                        onInputToken("π")
+
+                    val constLabel = if (isInv) "e" else "π"
+                    CalcKeyButton(constLabel, Modifier.weight(1f), isScientific = true, tag = "key_pi") {
+                        onInputToken(constLabel)
                     }
-                    CalcKeyButton("ln(", Modifier.weight(1f), isScientific = true, tag = "key_ln") {
-                        onInputToken("ln(")
+
+                    val logLabel = if (isInv) "log(" else "ln("
+                    CalcKeyButton(logLabel, Modifier.weight(1f), isScientific = true, tag = "key_ln") {
+                        onInputToken(logLabel)
                     }
-                    CalcKeyButton("%", Modifier.weight(1f), isScientific = true, tag = "key_percent") {
-                        onInputToken("%")
+
+                    val postfixLabel = if (isInv) "x!" else "%"
+                    val postfixToken = if (isInv) "!" else "%"
+                    CalcKeyButton(postfixLabel, Modifier.weight(1f), isScientific = true, tag = "key_percent") {
+                        onInputToken(postfixToken)
                     }
                 }
 
@@ -661,402 +627,6 @@ private fun CalcKeyButton(
                 fontWeight = FontWeight.Bold,
                 color = style.contentColor
             )
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun DateAndLunarCalculatorContent(
-    uiState: SeleniaUiState,
-    onSelectBaseDate: (SimpleDate) -> Unit,
-    onSetUseLunarCycleOffset: (Boolean) -> Unit,
-    onUpdateOffsetDays: (Int) -> Unit,
-    onUpdateOffsetLunarCycles: (Double) -> Unit,
-    onStepComparisonDate: (Int) -> Unit,
-    onSetComparisonStartDate: (SimpleDate) -> Unit,
-    onSetComparisonEndDate: (SimpleDate) -> Unit,
-    onJumpToDateInCalendar: (SimpleDate) -> Unit
-) {
-    var showBaseDatePicker by rememberSaveable { mutableStateOf(false) }
-    var showComparisonStartPicker by rememberSaveable { mutableStateOf(false) }
-    var showComparisonDatePicker by rememberSaveable { mutableStateOf(false) }
-
-    if (showBaseDatePicker) {
-        SeleniaCalendarDatePickerModal(
-            initialDate = uiState.selectedDate,
-            onDismiss = { showBaseDatePicker = false },
-            onDateSelected = { picked ->
-                showBaseDatePicker = false
-                onSelectBaseDate(picked)
-            }
-        )
-    }
-
-    if (showComparisonStartPicker) {
-        SeleniaCalendarDatePickerModal(
-            initialDate = uiState.comparisonStartDate,
-            onDismiss = { showComparisonStartPicker = false },
-            onDateSelected = { picked ->
-                showComparisonStartPicker = false
-                onSetComparisonStartDate(picked)
-            }
-        )
-    }
-
-    if (showComparisonDatePicker) {
-        SeleniaCalendarDatePickerModal(
-            initialDate = uiState.comparisonEndDate,
-            onDismiss = { showComparisonDatePicker = false },
-            onDateSelected = { picked ->
-                showComparisonDatePicker = false
-                onSetComparisonEndDate(picked)
-            }
-        )
-    }
-
-    val targetDate = uiState.computedTargetDate
-    val targetLunar = uiState.computedTargetLunarInfo
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag("date_lunar_calculator_list"),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-        contentPadding = PaddingValues(bottom = 20.dp)
-    ) {
-        item(key = "date_offset_card") {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = MaterialTheme.shapes.large,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.date_calc_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-
-                        Surface(
-                            onClick = { showBaseDatePicker = true },
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("pick_base_date_button")
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    MoonPhaseBadgeIcon(
-                                        phaseType = uiState.selectedDayLunarInfo.phaseType,
-                                        size = 20.dp
-                                    )
-                                    Column {
-                                        Text(
-                                            text = "Fecha base (toca para elegir)",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.secondary
-                                        )
-                                        Text(
-                                            text = "${uiState.selectedDate.formatSpanishLong().replaceFirstChar { it.uppercase() }} (${uiState.selectedDayLunarInfo.phaseType.spanishName})",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                }
-                                Icon(
-                                    imageVector = SeleniaVectorIcons.CalendarMonth,
-                                    contentDescription = "Elegir fecha base",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilterChip(
-                                selected = !uiState.useLunarCycleOffset,
-                                onClick = { onSetUseLunarCycleOffset(false) },
-                                label = { Text("Por Días") },
-                                modifier = Modifier.testTag("offset_by_days_chip")
-                            )
-                            FilterChip(
-                                selected = uiState.useLunarCycleOffset,
-                                onClick = { onSetUseLunarCycleOffset(true) },
-                                label = { Text("Por Ciclos Lunares (29.53d)") },
-                                modifier = Modifier.testTag("offset_by_cycles_chip")
-                            )
-                        }
-
-                        if (!uiState.useLunarCycleOffset) {
-                            Text(
-                                text = "Desplazamiento: ${if (uiState.dateOffsetDays >= 0) "+${uiState.dateOffsetDays}" else "${uiState.dateOffsetDays}"} días",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Slider(
-                                value = uiState.dateOffsetDays.toFloat(),
-                                onValueChange = { onUpdateOffsetDays(it.roundToInt()) },
-                                valueRange = -180f..180f,
-                                modifier = Modifier.testTag("date_offset_days_slider")
-                            )
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                DAY_OFFSET_PRESETS.forEach { preset ->
-                                    AssistChip(
-                                        onClick = { onUpdateOffsetDays(preset) },
-                                        label = { Text(if (preset > 0) "+${preset}d" else "${preset}d") }
-                                    )
-                                }
-                            }
-                        } else {
-                            Text(
-                                text = "Ciclos sinódicos: ${"%.1f".format(uiState.dateOffsetLunarCycles)} lunas (${(uiState.dateOffsetLunarCycles * 29.5306).roundToInt()} días)",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Slider(
-                                value = uiState.dateOffsetLunarCycles.toFloat(),
-                                onValueChange = {
-                                    val stepped = (it * 2f).roundToInt() / 2.0
-                                    onUpdateOffsetLunarCycles(stepped)
-                                },
-                                valueRange = -12f..12f,
-                                modifier = Modifier.testTag("date_offset_cycles_slider")
-                            )
-                        }
-
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f),
-                            shape = MaterialTheme.shapes.medium,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(14.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(56.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.background)
-                                        .padding(4.dp)
-                                ) {
-                                    RealisticMoonCanvas(
-                                        phaseFraction = targetLunar.phaseFraction,
-                                        isNorthernHemisphere = uiState.isNorthernHemisphere,
-                                        showAmbientGlow = false
-                                    )
-                                }
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = stringResource(R.string.date_calc_result_label),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.secondary
-                                    )
-                                    Text(
-                                        text = targetDate.formatSpanishLong().replaceFirstChar { it.uppercase() },
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.testTag("computed_target_date_text")
-                                    )
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        MoonPhaseBadgeIcon(
-                                            phaseType = targetLunar.phaseType,
-                                            size = 15.dp
-                                        )
-                                        Text(
-                                            text = "${targetLunar.phaseType.spanishName} • ${"%.1f".format(targetLunar.illuminationPercent)}% iluminada",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Button(
-                            onClick = { onJumpToDateInCalendar(targetDate) },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("jump_to_computed_date_button")
-                        ) {
-                            Icon(
-                                imageVector = SeleniaVectorIcons.CalendarMonth,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(stringResource(R.string.apply_to_calendar))
-                        }
-                }
-            }
-        }
-
-        // 2. Interval Comparison Card
-        item(key = "interval_comparison_card") {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = MaterialTheme.shapes.large,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        text = "Intervalo entre Dos Fechas",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Surface(
-                            onClick = { showComparisonStartPicker = true },
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("pick_comparison_start_date_button")
-                        ) {
-                            Column(modifier = Modifier.padding(10.dp)) {
-                                Text(
-                                    text = "Desde (toca)",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.secondary
-                                )
-                                Text(
-                                    text = uiState.comparisonStartDate.formatSpanishShort(),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-                        Surface(
-                            onClick = { showComparisonDatePicker = true },
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("pick_comparison_end_date_button")
-                        ) {
-                            Column(modifier = Modifier.padding(10.dp)) {
-                                Text(
-                                    text = "Hasta (toca)",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    text = uiState.comparisonEndDate.formatSpanishShort(),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        AssistChip(
-                            onClick = { onStepComparisonDate(-30) },
-                            label = { Text("-30d") }
-                        )
-                        AssistChip(
-                            onClick = { onStepComparisonDate(-7) },
-                            label = { Text("-7d") }
-                        )
-                        AssistChip(
-                            onClick = { onStepComparisonDate(7) },
-                            label = { Text("+7d") }
-                        )
-                        AssistChip(
-                            onClick = { onStepComparisonDate(30) },
-                            label = { Text("+30d") }
-                        )
-                    }
-
-                    val diffDays = abs(uiState.daysBetweenSelectedAndComparison)
-                    val diffCycles = abs(uiState.synodicCyclesBetweenSelectedAndComparison)
-
-                    Surface(
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
-                        shape = MaterialTheme.shapes.medium,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = "$diffDays días naturales",
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                                Text(
-                                    text = "${"%.2f".format(diffCycles)} meses sinódicos lunares",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                MoonPhaseBadgeIcon(
-                                    phaseType = MoonPhaseType.FULL_MOON,
-                                    size = 24.dp
-                                )
-                                Text(
-                                    text = "×${"%.1f".format(diffCycles)}",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 }

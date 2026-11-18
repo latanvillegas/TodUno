@@ -29,8 +29,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.example.domain.LunarAlmanacCategory
-import com.example.domain.LunarTraditionalGoal
 import com.example.domain.MoonPhaseType
 import com.example.ui.AppDestination
 import kotlin.math.cos
@@ -833,58 +831,4 @@ fun SeleniaIconBadge(
     }
 }
 
-/**
- * Maps each [LunarAlmanacCategory] to a dedicated Material Symbol vector icon.
- */
-fun LunarAlmanacCategory.iconVector(): ImageVector = when (this) {
-    LunarAlmanacCategory.ALL -> SeleniaVectorIcons.AutoAwesome
-    LunarAlmanacCategory.BEAUTY_SKIN -> SeleniaVectorIcons.Spa
-    LunarAlmanacCategory.HAIR_CARE -> SeleniaVectorIcons.ContentCut
-    LunarAlmanacCategory.WELLNESS -> SeleniaVectorIcons.SelfImprovement
-    LunarAlmanacCategory.GARDENING -> SeleniaVectorIcons.Eco
-    LunarAlmanacCategory.ASTRONOMY -> SeleniaVectorIcons.TravelExplore
-    LunarAlmanacCategory.TIDES -> SeleniaVectorIcons.Waves
-    LunarAlmanacCategory.FISHING -> SeleniaVectorIcons.Phishing
-    LunarAlmanacCategory.HOME_CRAFTS -> SeleniaVectorIcons.Handyman
-}
 
-/**
- * Maps each [LunarAlmanacCategory] to a distinct signature accent color.
- */
-fun LunarAlmanacCategory.accentColor(): Color = when (this) {
-    LunarAlmanacCategory.ALL -> Color(0xFFFFD54F)
-    LunarAlmanacCategory.BEAUTY_SKIN -> Color(0xFFF48FB1)
-    LunarAlmanacCategory.HAIR_CARE -> Color(0xFFFFD54F)
-    LunarAlmanacCategory.WELLNESS -> Color(0xFF80CBC4)
-    LunarAlmanacCategory.GARDENING -> Color(0xFF81C784)
-    LunarAlmanacCategory.ASTRONOMY -> Color(0xFF90CAF9)
-    LunarAlmanacCategory.TIDES -> Color(0xFF4DD0E1)
-    LunarAlmanacCategory.FISHING -> Color(0xFFFFB74D)
-    LunarAlmanacCategory.HOME_CRAFTS -> Color(0xFFCE93D8)
-}
-
-/**
- * Maps each [LunarTraditionalGoal] to a dedicated Material Symbol vector icon.
- */
-fun LunarTraditionalGoal.iconVector(): ImageVector = when (this) {
-    LunarTraditionalGoal.FAST_HAIR_GROWTH -> SeleniaVectorIcons.ContentCut
-    LunarTraditionalGoal.STRONG_THICK_HAIR -> SeleniaVectorIcons.AutoAwesome
-    LunarTraditionalGoal.LONG_LASTING_DEPILATION -> SeleniaVectorIcons.AutoFixHigh
-    LunarTraditionalGoal.SKIN_NUTRITION_GLOW -> SeleniaVectorIcons.Spa
-    LunarTraditionalGoal.SKIN_DETOX_EXFOLIATION -> SeleniaVectorIcons.WaterDrop
-    LunarTraditionalGoal.PLANTING_FRUITS_FLOWERS -> SeleniaVectorIcons.LocalFlorist
-    LunarTraditionalGoal.PRUNING_AND_TIMBER -> SeleniaVectorIcons.Park
-}
-
-/**
- * Maps each [LunarTraditionalGoal] to a distinct signature accent color.
- */
-fun LunarTraditionalGoal.accentColor(): Color = when (this) {
-    LunarTraditionalGoal.FAST_HAIR_GROWTH -> Color(0xFFFFD54F)
-    LunarTraditionalGoal.STRONG_THICK_HAIR -> Color(0xFFFFB74D)
-    LunarTraditionalGoal.LONG_LASTING_DEPILATION -> Color(0xFFCE93D8)
-    LunarTraditionalGoal.SKIN_NUTRITION_GLOW -> Color(0xFFF48FB1)
-    LunarTraditionalGoal.SKIN_DETOX_EXFOLIATION -> Color(0xFF4DD0E1)
-    LunarTraditionalGoal.PLANTING_FRUITS_FLOWERS -> Color(0xFF81C784)
-    LunarTraditionalGoal.PRUNING_AND_TIMBER -> Color(0xFFA1887F)
-}

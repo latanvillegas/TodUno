@@ -14,7 +14,6 @@ import com.example.domain.CelestialEvent
 import com.example.domain.LunarAstronomer
 import com.example.domain.LunarDayInfo
 import com.example.domain.MajorPhaseMilestone
-import com.example.domain.MoonPhaseType
 import com.example.domain.ScientificCalculatorEngine
 import com.example.domain.SimpleDate
 import com.example.notifications.SeleniaAlertManager
@@ -26,7 +25,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
-import kotlin.math.roundToInt
 
 enum class AppDestination {
     CALENDAR,
@@ -41,19 +39,19 @@ enum class ClockSubTab {
     TIMER
 }
 
-enum class CalculatorMode {
-    SCIENTIFIC,
-    DATE_AND_LUNAR
-}
-
 @Immutable
 data class CalendarNote(
     val id: Long,
     val date: SimpleDate,
     val title: String,
     val category: String,
-    val reminderEnabled: Boolean = false
-)
+    val reminderEnabled: Boolean = false,
+    val reminderHour: Int = 9,
+    val reminderMinute: Int = 0
+) {
+    fun formattedReminderTime(): String =
+        "%02d:%02d".format(Locale.US, reminderHour.coerceIn(0, 23), reminderMinute.coerceIn(0, 59))
+}
 
 @Immutable
 data class StopwatchLap(
@@ -87,11 +85,14 @@ data class SeleniaUiState(
     val upcomingMajorPhases: List<MajorPhaseMilestone> = emptyList(),
     val upcomingCelestialEvents: List<CelestialEvent> = emptyList(),
     val notesByDate: Map<String, List<CalendarNote>> = emptyMap(),
+    val backupStatusMessage: String? = null,
 
     // Clock & World Cities State
     val clockSubTab: ClockSubTab = ClockSubTab.WORLD_CLOCK,
     val is24HourFormat: Boolean = true,
-    val selectedWorldCityIds: List<String> = SeleniaPersistedSettings.DEFAULT_WORLD_CITY_IDS,
+    val selectedWorldCityIds: List<String> = emptyList(),
+    val watchDialPresetName: String = SeleniaPersistedSettings.DEFAULT_WATCH_DIAL_PRESET,
+    val timeZoneRevision: Int = 0,
 
     // Persistent Monotonic Stopwatch State (0 background ticks when off-screen!)
     val stopwatchRunning: Boolean = false,
@@ -107,40 +108,13 @@ data class SeleniaUiState(
     val timerFinishedAlert: Boolean = false,
 
     // Calculator State
-    val calculatorMode: CalculatorMode = CalculatorMode.SCIENTIFIC,
     val isRadiansMode: Boolean = false,
+    val isInverseTrigMode: Boolean = false,
     val expression: String = "",
     val liveResultPreview: String = "0",
     val lastAnswer: String = "0",
-    val calculationHistory: List<CalculationRecord> = emptyList(),
-
-    // Date & Lunar Cycle Calculator State
-    val dateOffsetDays: Int = 29,
-    val dateOffsetLunarCycles: Double = 1.0,
-    val useLunarCycleOffset: Boolean = false,
-    val comparisonStartDate: SimpleDate = LunarAstronomer.today(),
-    val comparisonEndDate: SimpleDate = LunarAstronomer.addDays(LunarAstronomer.today(), 30)
+    val calculationHistory: List<CalculationRecord> = emptyList()
 ) {
-    val computedTargetDate: SimpleDate by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        val totalOffset = if (useLunarCycleOffset) {
-            (dateOffsetLunarCycles * LunarAstronomer.SYNODIC_MONTH_DAYS).roundToInt()
-        } else {
-            dateOffsetDays
-        }
-        LunarAstronomer.addDays(selectedDate, totalOffset)
-    }
-
-    val computedTargetLunarInfo: LunarDayInfo by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        LunarAstronomer.getLunarInfo(computedTargetDate)
-    }
-
-    val daysBetweenSelectedAndComparison: Int by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        LunarAstronomer.daysBetween(comparisonStartDate, comparisonEndDate)
-    }
-
-    val synodicCyclesBetweenSelectedAndComparison: Double
-        get() = daysBetweenSelectedAndComparison / LunarAstronomer.SYNODIC_MONTH_DAYS
-
     fun computeStopwatchElapsedMs(nowMonoMs: Long = currentMonotonicMs()): Long {
         return if (stopwatchRunning) {
             stopwatchAccumulatedMs + (nowMonoMs - stopwatchLastStartMonoMs).coerceAtLeast(0L)
@@ -165,14 +139,12 @@ class SeleniaViewModel(
 
     private val appContext: Context? = appContext?.applicationContext
     private val idCounter = AtomicLong(System.currentTimeMillis())
+    private var hasHydratedClockState = false
     private val _uiState = MutableStateFlow(createInitialState())
     val uiState: StateFlow<SeleniaUiState> = _uiState.asStateFlow()
 
     init {
         if (repository != null) {
-            viewModelScope.launch {
-                repository.ensureSeeded()
-            }
             viewModelScope.launch {
                 repository.notesByDateFlow.collect { persistedNotes ->
                     _uiState.update { it.copy(notesByDate = persistedNotes) }
@@ -190,6 +162,11 @@ class SeleniaViewModel(
             }
             viewModelScope.launch {
                 repository.settingsFlow.collect { settings ->
+                    val shouldHydrateClock = !hasHydratedClockState
+                    hasHydratedClockState = true
+                    var expiredPersistedTimerSec: Int? = null
+                    var activePersistedTimerRemainingMs: Long? = null
+
                     _uiState.update { current ->
                         val preview = if (current.expression.isBlank()) {
                             current.liveResultPreview
@@ -198,13 +175,85 @@ class SeleniaViewModel(
                                 .map { ScientificCalculatorEngine.formatNumber(it) }
                                 .getOrDefault(current.liveResultPreview)
                         }
-                        current.copy(
+
+                        var next = current.copy(
                             isNorthernHemisphere = settings.isNorthernHemisphere,
                             is24HourFormat = settings.is24HourFormat,
                             isRadiansMode = settings.isRadiansMode,
                             lunarAlertsEnabled = settings.lunarAlertsEnabled,
                             selectedWorldCityIds = settings.selectedWorldCityIds,
+                            watchDialPresetName = settings.watchDialPresetName,
                             liveResultPreview = preview
+                        )
+
+                        if (shouldHydrateClock) {
+                            val nowWall = System.currentTimeMillis()
+                            val nowMono = currentMonotonicMs()
+
+                            val hydratedSwAccumulated = if (
+                                settings.stopwatchRunning && settings.stopwatchStartWallEpochMs > 0L
+                            ) {
+                                settings.stopwatchAccumulatedMs +
+                                    (nowWall - settings.stopwatchStartWallEpochMs).coerceAtLeast(0L)
+                            } else {
+                                settings.stopwatchAccumulatedMs
+                            }
+                            val hydratedSwStartMono = if (settings.stopwatchRunning) nowMono else 0L
+
+                            var hydratedTimerRunning = false
+                            var hydratedTimerPausedMs = settings.timerRemainingPausedMs
+                            var hydratedTimerEndMono = 0L
+                            var hydratedTimerFinished = false
+
+                            if (settings.timerRunning && settings.timerEndWallEpochMs > 0L) {
+                                val remainingMs = settings.timerEndWallEpochMs - nowWall
+                                if (remainingMs > 0L) {
+                                    hydratedTimerRunning = true
+                                    hydratedTimerPausedMs = remainingMs
+                                    hydratedTimerEndMono = nowMono + remainingMs
+                                    activePersistedTimerRemainingMs = remainingMs
+                                } else {
+                                    hydratedTimerRunning = false
+                                    hydratedTimerPausedMs = 0L
+                                    hydratedTimerFinished = true
+                                    expiredPersistedTimerSec = settings.timerTotalSeconds
+                                }
+                            }
+
+                            next = next.copy(
+                                stopwatchRunning = settings.stopwatchRunning,
+                                stopwatchAccumulatedMs = hydratedSwAccumulated,
+                                stopwatchLastStartMonoMs = hydratedSwStartMono,
+                                stopwatchLaps = settings.stopwatchLaps,
+                                timerTotalSeconds = settings.timerTotalSeconds,
+                                timerRunning = hydratedTimerRunning,
+                                timerRemainingPausedMs = hydratedTimerPausedMs,
+                                timerEndTargetMonoMs = hydratedTimerEndMono,
+                                timerFinishedAlert = hydratedTimerFinished
+                            )
+                        } else if (!next.timerRunning && next.timerTotalSeconds != settings.timerTotalSeconds) {
+                            next = next.copy(
+                                timerTotalSeconds = settings.timerTotalSeconds,
+                                timerRemainingPausedMs = settings.timerRemainingPausedMs
+                            )
+                        }
+                        next
+                    }
+
+                    expiredPersistedTimerSec?.let { totalSec ->
+                        repository.saveTimerSnapshot(
+                            totalSeconds = totalSec,
+                            running = false,
+                            remainingPausedMs = 0L,
+                            endWallEpochMs = 0L
+                        )
+                    }
+                    val activeRem = activePersistedTimerRemainingMs
+                    if (activeRem != null && this@SeleniaViewModel.appContext != null) {
+                        SeleniaAlertManager.scheduleBackgroundTimerAlert(
+                            context = this@SeleniaViewModel.appContext,
+                            remainingDurationMs = activeRem,
+                            totalSeconds = settings.timerTotalSeconds
                         )
                     }
                 }
@@ -220,45 +269,6 @@ class SeleniaViewModel(
         val upcoming = LunarAstronomer.getUpcomingMajorPhases(today, count = 4)
         val celestialEvents = LunarAstronomer.getUpcomingCelestialEvents(today, count = 6)
 
-        val initialNotes = mutableMapOf<String, List<CalendarNote>>()
-        upcoming.firstOrNull { it.phaseType == MoonPhaseType.FULL_MOON }?.let { fullMoon ->
-            val key = fullMoon.date.toStorageKey()
-            initialNotes[key] = listOf(
-                CalendarNote(
-                    id = 1L,
-                    date = fullMoon.date,
-                    title = "Observación de Plenilunio (100% iluminada)",
-                    category = "Astronomía"
-                )
-            )
-        }
-        upcoming.firstOrNull { it.phaseType == MoonPhaseType.NEW_MOON }?.let { newMoon ->
-            val key = newMoon.date.toStorageKey()
-            initialNotes[key] = listOf(
-                CalendarNote(
-                    id = 2L,
-                    date = newMoon.date,
-                    title = "Noche sin luna: ideal para cielo profundo",
-                    category = "Astronomía"
-                )
-            )
-        }
-
-        val initialHistory = listOf(
-            CalculationRecord(
-                id = 1L,
-                expression = "12 × 29.5306",
-                result = "354.3672",
-                badgeLabel = "Año Lunar (12 lunas)"
-            ),
-            CalculationRecord(
-                id = 2L,
-                expression = "365.2422 − (12 × 29.5306)",
-                result = "10.875",
-                badgeLabel = "Epacta anual (días)"
-            )
-        )
-
         return SeleniaUiState(
             today = today,
             selectedDate = today,
@@ -269,9 +279,9 @@ class SeleniaViewModel(
             selectedDayLunarInfo = lunarInfo,
             upcomingMajorPhases = upcoming,
             upcomingCelestialEvents = celestialEvents,
-            notesByDate = initialNotes,
-            calculationHistory = initialHistory,
-            lastAnswer = initialHistory.first().result
+            notesByDate = emptyMap(),
+            calculationHistory = emptyList(),
+            lastAnswer = "0"
         )
     }
 
@@ -284,6 +294,8 @@ class SeleniaViewModel(
         val currentToday = LunarAstronomer.today()
         val nowMono = currentMonotonicMs()
         var dayChanged = false
+        var timerCompletedWhileStopped = false
+        var completedTimerSec = 300
 
         _uiState.update { current ->
             var next = current
@@ -301,6 +313,8 @@ class SeleniaViewModel(
                 )
             }
             if (next.timerRunning && nowMono >= next.timerEndTargetMonoMs) {
+                timerCompletedWhileStopped = true
+                completedTimerSec = next.timerTotalSeconds
                 next = next.copy(
                     timerRunning = false,
                     timerRemainingPausedMs = 0L,
@@ -311,7 +325,56 @@ class SeleniaViewModel(
         }
 
         if (dayChanged) {
-            appContext?.let { SeleniaMoonWidgetProvider.refreshAllWidgets(it) }
+            appContext?.let {
+                SeleniaMoonWidgetProvider.refreshAllWidgets(
+                    context = it,
+                    isNorthernHemisphereOverride = _uiState.value.isNorthernHemisphere
+                )
+            }
+        }
+        if (timerCompletedWhileStopped && repository != null) {
+            viewModelScope.launch {
+                repository.saveTimerSnapshot(
+                    totalSeconds = completedTimerSec,
+                    running = false,
+                    remainingPausedMs = 0L,
+                    endWallEpochMs = 0L
+                )
+            }
+        }
+    }
+
+    /**
+     * Triggered dynamically when the OS broadcasts ACTION_TIMEZONE_CHANGED, ACTION_TIME_CHANGED,
+     * or ACTION_DATE_CHANGED while the app is open.
+     */
+    fun onSystemTimeOrZoneChanged() {
+        _uiState.update { it.copy(timeZoneRevision = it.timeZoneRevision + 1) }
+        onAppResumed()
+        val ctx = appContext
+        if (ctx != null) {
+            SeleniaMoonWidgetProvider.refreshAllWidgets(
+                context = ctx,
+                isNorthernHemisphereOverride = _uiState.value.isNorthernHemisphere
+            )
+            if (repository != null) {
+                viewModelScope.launch {
+                    if (_uiState.value.lunarAlertsEnabled) {
+                        SeleniaAlertManager.syncUpcomingLunarPhaseAlerts(ctx, true)
+                    }
+                    repository.getReminderNotes().forEach { note ->
+                        SeleniaAlertManager.scheduleNoteReminder(
+                            context = ctx,
+                            noteId = note.id,
+                            date = note.date,
+                            title = note.title,
+                            category = note.category,
+                            reminderHour = note.reminderHour,
+                            reminderMinute = note.reminderMinute
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -329,6 +392,17 @@ class SeleniaViewModel(
         }
     }
 
+    fun selectWatchDialPreset(presetName: String) {
+        if (presetName.isBlank()) return
+        _uiState.update { current ->
+            if (current.watchDialPresetName == presetName) current
+            else current.copy(watchDialPresetName = presetName)
+        }
+        if (repository != null) {
+            viewModelScope.launch { repository.setWatchDialPresetName(presetName) }
+        }
+    }
+
     fun toggle24HourFormat() {
         val next = !_uiState.value.is24HourFormat
         _uiState.update { it.copy(is24HourFormat = next) }
@@ -338,31 +412,48 @@ class SeleniaViewModel(
     }
 
     fun toggleWorldCity(timeZoneId: String) {
+        if (timeZoneId.isBlank()) return
         var updatedIds: List<String> = emptyList()
         _uiState.update { current ->
             val next = if (timeZoneId in current.selectedWorldCityIds) {
-                if (current.selectedWorldCityIds.size > 1) {
-                    current.selectedWorldCityIds - timeZoneId
-                } else {
-                    current.selectedWorldCityIds
-                }
+                current.selectedWorldCityIds - timeZoneId
             } else {
                 (current.selectedWorldCityIds + timeZoneId).distinct()
             }
             updatedIds = next
             current.copy(selectedWorldCityIds = next)
         }
-        if (repository != null && updatedIds.isNotEmpty()) {
+        if (repository != null) {
             viewModelScope.launch { repository.setSelectedWorldCityIds(updatedIds) }
         }
     }
 
-    // --- Stopwatch Actions (Monotonic & Zero-Tick in ViewModel) ---
+    // --- Stopwatch Actions (Monotonic in RAM + Persisted Across Process Death) ---
+
+    private fun persistStopwatchState(state: SeleniaUiState, nowMono: Long) {
+        val repo = repository ?: return
+        val nowWall = System.currentTimeMillis()
+        val startWall = if (state.stopwatchRunning) {
+            val activeDelta = (nowMono - state.stopwatchLastStartMonoMs).coerceAtLeast(0L)
+            (nowWall - activeDelta).coerceAtLeast(1L)
+        } else {
+            0L
+        }
+        viewModelScope.launch {
+            repo.saveStopwatchSnapshot(
+                running = state.stopwatchRunning,
+                accumulatedMs = state.stopwatchAccumulatedMs,
+                startWallEpochMs = startWall,
+                laps = state.stopwatchLaps
+            )
+        }
+    }
 
     fun toggleStopwatch() {
         val nowMono = currentMonotonicMs()
+        lateinit var updated: SeleniaUiState
         _uiState.update { current ->
-            if (current.stopwatchRunning) {
+            val next = if (current.stopwatchRunning) {
                 val total = current.stopwatchAccumulatedMs +
                     (nowMono - current.stopwatchLastStartMonoMs).coerceAtLeast(0L)
                 current.copy(
@@ -375,11 +466,15 @@ class SeleniaViewModel(
                     stopwatchLastStartMonoMs = nowMono
                 )
             }
+            updated = next
+            next
         }
+        persistStopwatchState(updated, nowMono)
     }
 
     fun lapStopwatch() {
         val nowMono = currentMonotonicMs()
+        var updated: SeleniaUiState? = null
         _uiState.update { current ->
             val currentTotal = current.computeStopwatchElapsedMs(nowMono)
             if (currentTotal <= 0L) return@update current
@@ -391,48 +486,94 @@ class SeleniaViewModel(
                 lapDurationMs = lapDiff,
                 totalElapsedMs = currentTotal
             )
-            current.copy(
+            val next = current.copy(
                 stopwatchLaps = (listOf(newLap) + current.stopwatchLaps).take(200)
             )
+            updated = next
+            next
         }
+        updated?.let { persistStopwatchState(it, nowMono) }
     }
 
     fun resetStopwatch() {
+        val nowMono = currentMonotonicMs()
+        lateinit var updated: SeleniaUiState
         _uiState.update { current ->
-            current.copy(
+            val next = current.copy(
                 stopwatchRunning = false,
                 stopwatchAccumulatedMs = 0L,
                 stopwatchLastStartMonoMs = 0L,
                 stopwatchLaps = emptyList()
             )
+            updated = next
+            next
+        }
+        persistStopwatchState(updated, nowMono)
+    }
+
+    // --- Timer Actions (Monotonic in RAM + Persisted Across Process Death, up to 23:59:59) ---
+
+    private fun persistTimerState(state: SeleniaUiState, nowMono: Long) {
+        val repo = repository ?: return
+        val nowWall = System.currentTimeMillis()
+        val endWall = if (state.timerRunning) {
+            val remaining = (state.timerEndTargetMonoMs - nowMono).coerceAtLeast(0L)
+            nowWall + remaining
+        } else {
+            0L
+        }
+        viewModelScope.launch {
+            repo.saveTimerSnapshot(
+                totalSeconds = state.timerTotalSeconds,
+                running = state.timerRunning,
+                remainingPausedMs = state.timerRemainingPausedMs,
+                endWallEpochMs = endWall
+            )
         }
     }
 
-    // --- Timer Actions (Monotonic & Zero-Tick in ViewModel) ---
-
     fun selectTimerPresetSeconds(seconds: Int) {
-        val clamped = seconds.coerceIn(10, 7200)
+        val nowMono = currentMonotonicMs()
+        val clamped = seconds.coerceIn(
+            SeleniaRepository.MIN_TIMER_SECONDS,
+            SeleniaRepository.MAX_TIMER_SECONDS
+        )
         appContext?.let { SeleniaAlertManager.cancelBackgroundTimerAlert(it) }
+        lateinit var updated: SeleniaUiState
         _uiState.update { current ->
-            current.copy(
+            val next = current.copy(
                 timerRunning = false,
                 timerFinishedAlert = false,
                 timerTotalSeconds = clamped,
                 timerRemainingPausedMs = clamped * 1000L,
                 timerEndTargetMonoMs = 0L
             )
+            updated = next
+            next
         }
+        persistTimerState(updated, nowMono)
+    }
+
+    fun setCustomTimerDuration(hours: Int, minutes: Int, seconds: Int) {
+        val total = (hours.coerceIn(0, 23) * 3600) +
+            (minutes.coerceIn(0, 59) * 60) +
+            seconds.coerceIn(0, 59)
+        selectTimerPresetSeconds(total.coerceAtLeast(SeleniaRepository.MIN_TIMER_SECONDS))
     }
 
     fun adjustTimerSeconds(deltaSec: Int) {
         val nowMono = currentMonotonicMs()
         var scheduleRemainingMs: Long? = null
         var scheduleTotalSec = 0
+        lateinit var updated: SeleniaUiState
 
         _uiState.update { current ->
-            val nextSec = (current.timerTotalSeconds + deltaSec).coerceIn(10, 7200)
+            val nextSec = (current.timerTotalSeconds + deltaSec).coerceIn(
+                SeleniaRepository.MIN_TIMER_SECONDS,
+                SeleniaRepository.MAX_TIMER_SECONDS
+            )
             scheduleTotalSec = nextSec
-            if (!current.timerRunning) {
+            val next = if (!current.timerRunning) {
                 current.copy(
                     timerTotalSeconds = nextSec,
                     timerFinishedAlert = false,
@@ -447,12 +588,15 @@ class SeleniaViewModel(
                     timerEndTargetMonoMs = adjustedEnd
                 )
             }
+            updated = next
+            next
         }
 
         val rem = scheduleRemainingMs
         if (rem != null && appContext != null) {
             SeleniaAlertManager.scheduleBackgroundTimerAlert(appContext, rem, scheduleTotalSec)
         }
+        persistTimerState(updated, nowMono)
     }
 
     fun toggleTimerStartPause() {
@@ -460,9 +604,10 @@ class SeleniaViewModel(
         var scheduleRemainingMs: Long? = null
         var scheduleTotalSec = 0
         var shouldCancel = false
+        lateinit var updated: SeleniaUiState
 
         _uiState.update { current ->
-            if (current.timerRunning) {
+            val next = if (current.timerRunning) {
                 shouldCancel = true
                 val remaining = (current.timerEndTargetMonoMs - nowMono).coerceAtLeast(0L)
                 current.copy(
@@ -485,6 +630,8 @@ class SeleniaViewModel(
                     timerEndTargetMonoMs = nowMono + durationMs
                 )
             }
+            updated = next
+            next
         }
 
         if (shouldCancel) {
@@ -495,37 +642,48 @@ class SeleniaViewModel(
                 SeleniaAlertManager.scheduleBackgroundTimerAlert(appContext, rem, scheduleTotalSec)
             }
         }
+        persistTimerState(updated, nowMono)
     }
 
     fun resetTimer() {
+        val nowMono = currentMonotonicMs()
         appContext?.let { SeleniaAlertManager.cancelBackgroundTimerAlert(it) }
+        lateinit var updated: SeleniaUiState
         _uiState.update { current ->
-            current.copy(
+            val next = current.copy(
                 timerRunning = false,
                 timerFinishedAlert = false,
                 timerRemainingPausedMs = current.timerTotalSeconds * 1000L,
                 timerEndTargetMonoMs = 0L
             )
+            updated = next
+            next
         }
+        persistTimerState(updated, nowMono)
     }
 
     fun onForegroundTimerReachedZero() {
+        val nowMono = currentMonotonicMs()
         var didTransitionToFinished = false
+        var updated: SeleniaUiState? = null
         _uiState.update { current ->
             if (!current.timerRunning) return@update current
             didTransitionToFinished = true
-            current.copy(
+            val next = current.copy(
                 timerRunning = false,
                 timerRemainingPausedMs = 0L,
                 timerFinishedAlert = true
             )
+            updated = next
+            next
         }
         if (didTransitionToFinished) {
             appContext?.let { SeleniaAlertManager.triggerTimerFinishedFeedback(it) }
+            updated?.let { persistTimerState(it, nowMono) }
         }
     }
 
-    // --- Calendar & Lunar Navigation ---
+    // --- Calendar, Notes & JSON Backup/Restore ---
 
     fun selectDate(date: SimpleDate) {
         _uiState.update { current ->
@@ -546,8 +704,6 @@ class SeleniaViewModel(
             } else {
                 current.monthMilestones
             }
-            // Reuse celestial events if start date is still before the earliest cached celestial event
-            // and within the same month, avoiding redundant list rebuilds on single-day taps!
             val firstCachedEventDate = current.upcomingCelestialEvents.firstOrNull()?.date
             val newCelestialEvents = if (
                 !needMonthRefresh &&
@@ -620,7 +776,12 @@ class SeleniaViewModel(
         if (repository != null) {
             viewModelScope.launch { repository.setNorthernHemisphere(next) }
         }
-        appContext?.let { SeleniaMoonWidgetProvider.refreshAllWidgets(it) }
+        appContext?.let {
+            SeleniaMoonWidgetProvider.refreshAllWidgets(
+                context = it,
+                isNorthernHemisphereOverride = next
+            )
+        }
     }
 
     fun setLunarAlertsEnabled(enabled: Boolean) {
@@ -634,11 +795,15 @@ class SeleniaViewModel(
     fun addNoteForSelectedDate(
         title: String,
         category: String,
-        reminderEnabled: Boolean = false
+        reminderEnabled: Boolean = false,
+        reminderHour: Int = 9,
+        reminderMinute: Int = 0
     ) {
         val cleanTitle = title.trim().take(240)
         if (cleanTitle.isEmpty()) return
         val cleanCategory = category.trim().ifBlank { "Nota" }.take(48)
+        val safeHour = reminderHour.coerceIn(0, 23)
+        val safeMinute = reminderMinute.coerceIn(0, 59)
         val targetDate = _uiState.value.selectedDate
         val key = targetDate.toStorageKey()
         val alreadyExists = _uiState.value.notesByDate[key].orEmpty().any {
@@ -653,7 +818,9 @@ class SeleniaViewModel(
                     date = targetDate,
                     title = cleanTitle,
                     category = cleanCategory,
-                    reminderEnabled = reminderEnabled
+                    reminderEnabled = reminderEnabled,
+                    reminderHour = safeHour,
+                    reminderMinute = safeMinute
                 )
                 if (reminderEnabled && appContext != null) {
                     SeleniaAlertManager.scheduleNoteReminder(
@@ -661,7 +828,9 @@ class SeleniaViewModel(
                         noteId = insertedId,
                         date = targetDate,
                         title = cleanTitle,
-                        category = cleanCategory
+                        category = cleanCategory,
+                        reminderHour = safeHour,
+                        reminderMinute = safeMinute
                     )
                 }
             }
@@ -680,11 +849,75 @@ class SeleniaViewModel(
                     date = targetDate,
                     title = cleanTitle,
                     category = cleanCategory,
-                    reminderEnabled = reminderEnabled
+                    reminderEnabled = reminderEnabled,
+                    reminderHour = safeHour,
+                    reminderMinute = safeMinute
                 )
                 current.copy(
                     notesByDate = current.notesByDate + (key to (existing + newNote))
                 )
+            }
+        }
+    }
+
+    fun updateNote(
+        date: SimpleDate,
+        noteId: Long,
+        title: String,
+        category: String,
+        reminderEnabled: Boolean,
+        reminderHour: Int = 9,
+        reminderMinute: Int = 0
+    ) {
+        val cleanTitle = title.trim().take(240)
+        if (cleanTitle.isEmpty()) return
+        val cleanCategory = category.trim().ifBlank { "Nota" }.take(48)
+        val safeHour = reminderHour.coerceIn(0, 23)
+        val safeMinute = reminderMinute.coerceIn(0, 59)
+
+        if (repository != null) {
+            viewModelScope.launch {
+                repository.updateNote(
+                    noteId = noteId,
+                    title = cleanTitle,
+                    category = cleanCategory,
+                    reminderEnabled = reminderEnabled,
+                    reminderHour = safeHour,
+                    reminderMinute = safeMinute
+                )
+                if (appContext != null) {
+                    if (reminderEnabled) {
+                        SeleniaAlertManager.scheduleNoteReminder(
+                            context = appContext,
+                            noteId = noteId,
+                            date = date,
+                            title = cleanTitle,
+                            category = cleanCategory,
+                            reminderHour = safeHour,
+                            reminderMinute = safeMinute
+                        )
+                    } else {
+                        SeleniaAlertManager.cancelNoteReminder(appContext, noteId)
+                    }
+                }
+            }
+        } else {
+            _uiState.update { current ->
+                val key = date.toStorageKey()
+                val updatedList = current.notesByDate[key].orEmpty().map { existing ->
+                    if (existing.id == noteId) {
+                        existing.copy(
+                            title = cleanTitle,
+                            category = cleanCategory,
+                            reminderEnabled = reminderEnabled,
+                            reminderHour = safeHour,
+                            reminderMinute = safeMinute
+                        )
+                    } else {
+                        existing
+                    }
+                }
+                current.copy(notesByDate = current.notesByDate + (key to updatedList))
             }
         }
     }
@@ -704,13 +937,75 @@ class SeleniaViewModel(
         }
     }
 
-    // --- Calculator Actions ---
+    fun dismissBackupStatusMessage() {
+        _uiState.update { it.copy(backupStatusMessage = null) }
+    }
 
-    fun setCalculatorMode(mode: CalculatorMode) {
-        _uiState.update { current ->
-            if (current.calculatorMode == mode) current else current.copy(calculatorMode = mode)
+    fun exportBackupJson(onReady: (String) -> Unit) {
+        val repo = repository
+        if (repo != null) {
+            viewModelScope.launch {
+                runCatching { repo.exportBackupJson() }
+                    .onSuccess { json ->
+                        onReady(json)
+                        _uiState.update {
+                            it.copy(backupStatusMessage = "Respaldo JSON exportado correctamente.")
+                        }
+                    }
+                    .onFailure {
+                        _uiState.update {
+                            it.copy(backupStatusMessage = "No se pudo generar el respaldo JSON.")
+                        }
+                    }
+            }
+        } else {
+            _uiState.update {
+                it.copy(backupStatusMessage = "Almacenamiento local no disponible en modo de prueba.")
+            }
         }
     }
+
+    fun importBackupJson(rawJson: String) {
+        val repo = repository ?: return
+        viewModelScope.launch {
+            runCatching { repo.importBackupJson(rawJson) }
+                .onSuccess { summary ->
+                    val ctx = appContext
+                    if (ctx != null) {
+                        val settings = repo.getPersistedSettingsSnapshot()
+                        SeleniaAlertManager.syncUpcomingLunarPhaseAlerts(ctx, settings.lunarAlertsEnabled)
+                        repo.getReminderNotes().forEach { note ->
+                            SeleniaAlertManager.scheduleNoteReminder(
+                                context = ctx,
+                                noteId = note.id,
+                                date = note.date,
+                                title = note.title,
+                                category = note.category,
+                                reminderHour = note.reminderHour,
+                                reminderMinute = note.reminderMinute
+                            )
+                        }
+                        SeleniaMoonWidgetProvider.refreshAllWidgets(
+                            context = ctx,
+                            isNorthernHemisphereOverride = settings.isNorthernHemisphere
+                        )
+                    }
+                    _uiState.update {
+                        it.copy(
+                            backupStatusMessage = "Restaurado: ${summary.notesImported} notas nuevas, " +
+                                "${summary.calculationsImported} cálculos y ${summary.worldCitiesCount} ciudades."
+                        )
+                    }
+                }
+                .onFailure {
+                    _uiState.update {
+                        it.copy(backupStatusMessage = "Archivo JSON inválido o incompatible.")
+                    }
+                }
+        }
+    }
+
+    // --- Scientific Calculator Actions ---
 
     fun toggleRadiansMode() {
         val nextRad = !_uiState.value.isRadiansMode
@@ -732,6 +1027,10 @@ class SeleniaViewModel(
         }
     }
 
+    fun toggleInverseTrigMode() {
+        _uiState.update { it.copy(isInverseTrigMode = !it.isInverseTrigMode) }
+    }
+
     fun onCalculatorInput(token: String) {
         if (token.isEmpty()) return
         _uiState.update { current ->
@@ -742,7 +1041,7 @@ class SeleniaViewModel(
 
             val isBinaryOp = token in BINARY_OPERATORS
             val newExpr = when {
-                base.isEmpty() && (token == "×" || token == "÷" || token == "^") ->
+                base.isEmpty() && (token == "×" || token == "÷" || token == "^" || token == "!") ->
                     "${current.lastAnswer.takeIf { it != "Error" } ?: "0"}$token"
                 isBinaryOp && base.isNotEmpty() && base.last().toString() in BINARY_OPERATORS ->
                     base.dropLast(1) + token
@@ -796,7 +1095,6 @@ class SeleniaViewModel(
             evalResult.fold(
                 onSuccess = { num ->
                     val formatted = ScientificCalculatorEngine.formatNumber(num)
-                    // Avoid inserting trivial "123 = 123" or exact duplicate of top history item
                     val topRecord = current.calculationHistory.firstOrNull()
                     val isTrivialIdentity = customBadge == null && trimmedExpr == formatted
                     val isConsecutiveDuplicate = topRecord != null &&
@@ -810,9 +1108,10 @@ class SeleniaViewModel(
                             lastAnswer = formatted
                         )
                     } else {
-                        val modeTag = customBadge ?: if (current.isRadiansMode &&
-                            (trimmedExpr.contains("sin") || trimmedExpr.contains("cos") || trimmedExpr.contains("tan"))
-                        ) {
+                        val hasTrig = trimmedExpr.contains("sin") ||
+                            trimmedExpr.contains("cos") ||
+                            trimmedExpr.contains("tan")
+                        val modeTag = customBadge ?: if (current.isRadiansMode && hasTrig) {
                             "Modo RAD"
                         } else {
                             null
@@ -845,94 +1144,6 @@ class SeleniaViewModel(
         }
     }
 
-    fun convertCurrentValueToSynodicCycles() {
-        var recordToPersist: Triple<String, String, String?>? = null
-        _uiState.update { current ->
-            val baseExpr = current.expression.ifBlank { current.liveResultPreview }
-            val currentVal = ScientificCalculatorEngine.evaluate(baseExpr, current.isRadiansMode).getOrNull()
-                ?: return@update current
-            val cycles = currentVal / LunarAstronomer.SYNODIC_MONTH_DAYS
-            val formatted = ScientificCalculatorEngine.formatNumber(cycles)
-            val exprText = "${ScientificCalculatorEngine.formatNumber(currentVal)} días ÷ 29.5306"
-            val topRecord = current.calculationHistory.firstOrNull()
-            val isDuplicate = topRecord != null && topRecord.expression == exprText && topRecord.result == formatted
-            val nextHistory = if (isDuplicate) {
-                current.calculationHistory
-            } else {
-                recordToPersist = Triple(exprText, formatted, "Ciclos Lunares")
-                val record = CalculationRecord(
-                    id = idCounter.incrementAndGet(),
-                    expression = exprText,
-                    result = formatted,
-                    badgeLabel = "Ciclos Lunares"
-                )
-                listOf(record) + current.calculationHistory.take(29)
-            }
-            current.copy(
-                expression = formatted,
-                liveResultPreview = formatted,
-                lastAnswer = formatted,
-                calculationHistory = nextHistory
-            )
-        }
-        val persisted = recordToPersist
-        if (repository != null && persisted != null) {
-            viewModelScope.launch {
-                repository.insertCalculation(persisted.first, persisted.second, persisted.third)
-            }
-        }
-    }
-
-    fun multiplyCurrentValueBySynodicCycle() {
-        var recordToPersist: Triple<String, String, String?>? = null
-        _uiState.update { current ->
-            val baseExpr = current.expression.ifBlank { "1" }
-            val currentVal = ScientificCalculatorEngine.evaluate(baseExpr, current.isRadiansMode).getOrNull() ?: 1.0
-            val days = currentVal * LunarAstronomer.SYNODIC_MONTH_DAYS
-            val formatted = ScientificCalculatorEngine.formatNumber(days)
-            val exprText = "${ScientificCalculatorEngine.formatNumber(currentVal)} × 29.5306 d"
-            val badge = "Días en ${ScientificCalculatorEngine.formatNumber(currentVal)} lunas"
-            val topRecord = current.calculationHistory.firstOrNull()
-            val isDuplicate = topRecord != null && topRecord.expression == exprText && topRecord.result == formatted
-            val nextHistory = if (isDuplicate) {
-                current.calculationHistory
-            } else {
-                recordToPersist = Triple(exprText, formatted, badge)
-                val record = CalculationRecord(
-                    id = idCounter.incrementAndGet(),
-                    expression = exprText,
-                    result = formatted,
-                    badgeLabel = badge
-                )
-                listOf(record) + current.calculationHistory.take(29)
-            }
-            current.copy(
-                expression = formatted,
-                liveResultPreview = formatted,
-                lastAnswer = formatted,
-                calculationHistory = nextHistory
-            )
-        }
-        val persisted = recordToPersist
-        if (repository != null && persisted != null) {
-            viewModelScope.launch {
-                repository.insertCalculation(persisted.first, persisted.second, persisted.third)
-            }
-        }
-    }
-
-    fun sendSelectedDayLunarAgeToCalculator() {
-        val ageFormatted = "%.2f".format(Locale.US, _uiState.value.selectedDayLunarInfo.lunarAgeDays)
-        _uiState.update { current ->
-            current.copy(
-                currentDestination = AppDestination.CALCULATOR,
-                calculatorMode = CalculatorMode.SCIENTIFIC,
-                expression = ageFormatted,
-                liveResultPreview = ageFormatted
-            )
-        }
-    }
-
     fun clearHistory() {
         _uiState.update { it.copy(calculationHistory = emptyList()) }
         if (repository != null) {
@@ -947,35 +1158,6 @@ class SeleniaViewModel(
                 liveResultPreview = record.result
             )
         }
-    }
-
-    // Date & Lunar Calculator controls
-    fun setUseLunarCycleOffset(useCycles: Boolean) {
-        _uiState.update { it.copy(useLunarCycleOffset = useCycles) }
-    }
-
-    fun updateDateOffsetDays(days: Int) {
-        _uiState.update { it.copy(dateOffsetDays = days.coerceIn(-3650, 3650)) }
-    }
-
-    fun updateDateOffsetLunarCycles(cycles: Double) {
-        _uiState.update { it.copy(dateOffsetLunarCycles = cycles.coerceIn(-120.0, 120.0)) }
-    }
-
-    fun stepComparisonEndDate(deltaDays: Int) {
-        _uiState.update { current ->
-            current.copy(
-                comparisonEndDate = LunarAstronomer.addDays(current.comparisonEndDate, deltaDays)
-            )
-        }
-    }
-
-    fun setComparisonStartDate(date: SimpleDate) {
-        _uiState.update { it.copy(comparisonStartDate = date) }
-    }
-
-    fun setComparisonEndDate(date: SimpleDate) {
-        _uiState.update { it.copy(comparisonEndDate = date) }
     }
 
     companion object {

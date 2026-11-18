@@ -1,11 +1,12 @@
 package com.example
 
-import com.example.domain.LunarAlmanacCategory
+import com.example.domain.CelestialEventKind
 import com.example.domain.LunarAstronomer
-import com.example.domain.LunarTraditionalGoal
+import com.example.domain.LunarEclipseKind
 import com.example.domain.MoonPhaseType
 import com.example.domain.ScientificCalculatorEngine
 import com.example.domain.SimpleDate
+import com.example.domain.SolarEclipseKind
 import com.example.ui.AppDestination
 import com.example.ui.SeleniaViewModel
 import org.junit.Assert.assertEquals
@@ -22,27 +23,48 @@ class ExampleUnitTest {
         val info2 = LunarAstronomer.getLunarInfo(date)
         assertSame(info1, info2)
         assertEquals(MoonPhaseType.NEW_MOON, info1.phaseType)
-        assertTrue(info1.illuminationPercent < 2.0)
+        assertTrue(info1.isExactMajorPhaseDay)
+        assertTrue(info1.illuminationPercent < 1.0)
         // Jan 6, 2000 was a Thursday ("Jueves")
         assertEquals("Jueves", LunarAstronomer.getDayOfWeekSpanish(2000, 1, 6))
     }
 
     @Test
-    fun traditionalLunarAlmanac_providesAllEightCategoriesAndIdealDates() {
-        MoonPhaseType.entries.forEach { phase ->
-            val guides = phase.almanacGuides()
-            assertEquals(8, guides.size)
-            assertTrue(guides.any { it.category == LunarAlmanacCategory.BEAUTY_SKIN })
-            assertTrue(guides.any { it.category == LunarAlmanacCategory.HAIR_CARE })
-            assertTrue(guides.any { it.category == LunarAlmanacCategory.WELLNESS })
-        }
+    fun meeusEphemeris_computesRealJ2000EclipticLongitudeAndAngularDiameter() {
+        // At J2000.0 (Jan 1, 2000 12:00 UTC), real JPL Horizons lunar longitude is ~223.3° (Escorpio)
+        val j2000 = LunarAstronomer.getLunarInfo(SimpleDate(2000, 1, 1))
+        assertEquals("Escorpio ♏", j2000.zodiacSign)
+        assertEquals(223.3, j2000.eclipticLongitudeDeg, 0.5)
+        assertTrue(j2000.angularDiameterArcmin in 29.0..34.0)
+        assertTrue(j2000.eclipticLatitudeDeg in -5.5..5.5)
+    }
 
-        val start = SimpleDate(2026, 10, 29)
-        LunarTraditionalGoal.entries.forEach { goal ->
-            val upcoming = LunarAstronomer.getUpcomingIdealDatesForGoal(start, goal, count = 4)
-            assertTrue(upcoming.isNotEmpty())
-            assertTrue(upcoming.all { it.phaseType in goal.idealPhases })
-        }
+    @Test
+    fun dynamicMeeusEclipseEngine_detectsRealSolarAndLunarEclipsesAcrossDecades() {
+        // 1. April 8, 2024: Great North American Total Solar Eclipse (pre-2026)
+        val apr2024 = LunarAstronomer.getLunarInfo(SimpleDate(2024, 4, 8))
+        assertEquals(SolarEclipseKind.TOTAL, apr2024.solarEclipseKind)
+
+        // 2. March 3, 2026: Total Lunar Eclipse
+        val mar2026 = LunarAstronomer.getLunarInfo(SimpleDate(2026, 3, 3))
+        assertEquals(LunarEclipseKind.TOTAL, mar2026.lunarEclipseKind)
+
+        // 3. August 12, 2026: Total Solar Eclipse
+        val aug12_2026 = LunarAstronomer.getLunarInfo(SimpleDate(2026, 8, 12))
+        assertEquals(SolarEclipseKind.TOTAL, aug12_2026.solarEclipseKind)
+
+        // 4. August 28, 2026: Deep Partial Lunar Eclipse
+        val aug28_2026 = LunarAstronomer.getLunarInfo(SimpleDate(2026, 8, 28))
+        assertEquals(LunarEclipseKind.PARTIAL, aug28_2026.lunarEclipseKind)
+
+        // 5. October 8, 2033: Total Lunar Eclipse (post-2029, proving zero hardcoded year cap)
+        val oct2033 = LunarAstronomer.getLunarInfo(SimpleDate(2033, 10, 8))
+        assertEquals(LunarEclipseKind.TOTAL, oct2033.lunarEclipseKind)
+
+        val upcomingFrom2033 = LunarAstronomer.getUpcomingCelestialEvents(SimpleDate(2033, 9, 1), count = 4)
+        assertTrue(upcomingFrom2033.any {
+            it.date == SimpleDate(2033, 10, 8) && it.kind == CelestialEventKind.LUNAR_ECLIPSE
+        })
     }
 
     @Test
@@ -126,12 +148,12 @@ class ExampleUnitTest {
     }
 
     @Test
-    fun lunarAstronomer_providesMoonriseMoonsetAndUpcomingCelestialEvents() {
-        val date = SimpleDate(2026, 3, 3)
-        val info = LunarAstronomer.getLunarInfo(date)
-        assertTrue(info.moonriseTime.matches(Regex("\\d{2}:\\d{2}")))
-        assertTrue(info.moonsetTime.matches(Regex("\\d{2}:\\d{2}")))
-        assertTrue(info.meridianTransitTime.matches(Regex("\\d{2}:\\d{2}")))
+    fun lunarAstronomer_ordersUpcomingPhasesAndCelestialEventsChronologically() {
+        val phases = LunarAstronomer.getUpcomingMajorPhases(SimpleDate(2026, 1, 1), count = 4)
+        assertEquals(4, phases.size)
+        for (i in 1 until phases.size) {
+            assertTrue(LunarAstronomer.daysBetween(phases[i - 1].date, phases[i].date) > 0)
+        }
 
         val events = LunarAstronomer.getUpcomingCelestialEvents(SimpleDate(2026, 1, 1), count = 5)
         assertEquals(5, events.size)
@@ -156,8 +178,11 @@ class ExampleUnitTest {
         assertEquals(2028, vm.uiState.value.displayYear)
         assertEquals(8, vm.uiState.value.displayMonth)
 
+        assertTrue(vm.uiState.value.selectedWorldCityIds.isEmpty())
         vm.toggleWorldCity("Europe/London")
         assertTrue("Europe/London" in vm.uiState.value.selectedWorldCityIds)
+        vm.toggleWorldCity("Europe/London")
+        assertTrue(vm.uiState.value.selectedWorldCityIds.isEmpty())
     }
 
     @Test
@@ -228,12 +253,18 @@ class ExampleUnitTest {
         val uniqueDates = events.map { it.date.storageKey }.distinct()
         assertEquals(events.size, uniqueDates.size)
 
-        // 2. Default world cities exclude UTC and local timezone, with zero duplicates
+        // 2. Fresh ViewModel starts with ZERO pre-seeded notes, ZERO pre-seeded history, and ZERO pre-populated cities
         val defaults = com.example.data.SeleniaPersistedSettings.DEFAULT_WORLD_CITY_IDS
-        assertFalse("UTC" in defaults)
-        assertEquals(defaults.size, defaults.distinct().size)
+        assertTrue(defaults.isEmpty())
 
         val vm = SeleniaViewModel()
+        assertTrue(vm.uiState.value.notesByDate.isEmpty())
+        assertTrue(vm.uiState.value.calculationHistory.isEmpty())
+        assertEquals("0", vm.uiState.value.lastAnswer)
+        assertTrue(vm.uiState.value.selectedWorldCityIds.isEmpty())
+        vm.toggleWorldCity("America/Lima")
+        vm.toggleWorldCity("America/Lima")
+        assertTrue(vm.uiState.value.selectedWorldCityIds.isEmpty())
 
         // 3. Duplicate notes on the same date (case-insensitive) are ignored
         val selectedKey = vm.uiState.value.selectedDate.toStorageKey()
@@ -258,11 +289,82 @@ class ExampleUnitTest {
         vm.onCalculatorEvaluate()
         assertEquals(1, vm.uiState.value.calculationHistory.size)
 
-        // 5. Interval comparison start date is independent from base selectedDate
-        val customStart = SimpleDate(2027, 5, 10)
-        val originalBase = vm.uiState.value.selectedDate
-        vm.setComparisonStartDate(customStart)
-        assertEquals(customStart, vm.uiState.value.comparisonStartDate)
-        assertEquals(originalBase, vm.uiState.value.selectedDate)
+        // 5. Watch dial preset & stopwatch lap serialization round-trip cleanly
+        vm.selectWatchDialPreset("EMERALD_BOREAL")
+        assertEquals("EMERALD_BOREAL", vm.uiState.value.watchDialPresetName)
+
+        val sampleLaps = listOf(
+            com.example.ui.StopwatchLap(lapNumber = 2, lapDurationMs = 1450L, totalElapsedMs = 3200L),
+            com.example.ui.StopwatchLap(lapNumber = 1, lapDurationMs = 1750L, totalElapsedMs = 1750L)
+        )
+        val encoded = com.example.data.SeleniaRepository.encodeStopwatchLaps(sampleLaps)
+        val decoded = com.example.data.SeleniaRepository.decodeStopwatchLaps(encoded)
+        assertEquals(sampleLaps, decoded)
+    }
+
+    @Test
+    fun scientificCalculator_supportsInverseTrigLogEulerAndFactorial() {
+        // Degree mode inverse trig
+        assertEquals(30.0, ScientificCalculatorEngine.evaluate("asin(0.5)", isRadians = false).getOrThrow(), 1e-6)
+        assertEquals(60.0, ScientificCalculatorEngine.evaluate("acos(0.5)", isRadians = false).getOrThrow(), 1e-6)
+        assertEquals(45.0, ScientificCalculatorEngine.evaluate("atan(1)", isRadians = false).getOrThrow(), 1e-6)
+
+        // Radian mode inverse trig
+        assertEquals(Math.PI / 6.0, ScientificCalculatorEngine.evaluate("asin(0.5)", isRadians = true).getOrThrow(), 1e-9)
+        assertTrue(ScientificCalculatorEngine.evaluate("asin(1.5)").isFailure)
+
+        // Base-10 log, Euler's e, and postfix factorial
+        assertEquals(3.0, ScientificCalculatorEngine.evaluate("log(1000)").getOrThrow(), 1e-9)
+        assertEquals(1.0, ScientificCalculatorEngine.evaluate("ln(e)").getOrThrow(), 1e-9)
+        assertEquals(120.0, ScientificCalculatorEngine.evaluate("5!").getOrThrow(), 1e-9)
+        assertEquals(1.0, ScientificCalculatorEngine.evaluate("0!").getOrThrow(), 1e-9)
+        assertEquals(240.0, ScientificCalculatorEngine.evaluate("2(5!)").getOrThrow(), 1e-9)
+        assertTrue(ScientificCalculatorEngine.evaluate("(-3)!").isFailure)
+
+        // Smart backspace removes inverse trig tokens in one press
+        assertEquals("2+", ScientificCalculatorEngine.smartBackspace("2+asin("))
+        assertEquals("", ScientificCalculatorEngine.smartBackspace("atan("))
+    }
+
+    @Test
+    fun viewModel_supportsNoteEditingCustomReminderTime24hTimerAndTimezoneSync() {
+        val vm = SeleniaViewModel()
+        val targetDate = vm.uiState.value.selectedDate
+        vm.addNoteForSelectedDate(
+            title = "Conjunción Lunar",
+            category = "Astronomía",
+            reminderEnabled = true,
+            reminderHour = 21,
+            reminderMinute = 30
+        )
+        val created = vm.uiState.value.notesByDate[targetDate.toStorageKey()].orEmpty().single()
+        assertEquals("21:30", created.formattedReminderTime())
+
+        vm.updateNote(
+            date = targetDate,
+            noteId = created.id,
+            title = "Conjunción Lunar y Júpiter",
+            category = "Astronomía",
+            reminderEnabled = true,
+            reminderHour = 22,
+            reminderMinute = 15
+        )
+        val edited = vm.uiState.value.notesByDate[targetDate.toStorageKey()].orEmpty().single()
+        assertEquals("Conjunción Lunar y Júpiter", edited.title)
+        assertEquals("22:15", edited.formattedReminderTime())
+
+        // Custom multi-hour timer (2h 15m 30s = 8130s)
+        vm.setCustomTimerDuration(hours = 2, minutes = 15, seconds = 30)
+        assertEquals(8_130, vm.uiState.value.timerTotalSeconds)
+
+        // Inverse trig mode toggle & live timezone revision increment
+        assertFalse(vm.uiState.value.isInverseTrigMode)
+        vm.toggleInverseTrigMode()
+        assertTrue(vm.uiState.value.isInverseTrigMode)
+
+        val prevTzRev = vm.uiState.value.timeZoneRevision
+        vm.onSystemTimeOrZoneChanged()
+        assertEquals(prevTzRev + 1, vm.uiState.value.timeZoneRevision)
     }
 }
+

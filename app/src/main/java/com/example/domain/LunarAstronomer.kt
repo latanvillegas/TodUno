@@ -2,316 +2,87 @@ package com.example.domain
 
 import androidx.compose.runtime.Immutable
 import java.util.Calendar
-import java.util.TimeZone
+import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.acos
+import kotlin.math.asin
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.roundToInt
 import kotlin.math.sin
-
-enum class LunarAlmanacCategory(
-    val spanishTitle: String,
-    val shortChipLabel: String,
-    val emoji: String
-) {
-    ALL("Todas las Guías", "Todas", "✨"),
-    BEAUTY_SKIN("Belleza y Cuidado de la Piel", "Belleza y Piel", "💆‍♀️"),
-    HAIR_CARE("Cabello, Corte y Depilación", "Cabello y Corte", "💇‍♀️"),
-    WELLNESS("Bienestar, Cuerpo y Energía", "Bienestar", "🧘‍♀️"),
-    GARDENING("Agricultura y Jardín", "Agricultura", "🌱"),
-    ASTRONOMY("Observación Astronómica", "Astronomía", "🔭"),
-    TIDES("Dinámica de Mareas", "Mareas", "🌊"),
-    FISHING("Pesca y Ciclo Solunar", "Pesca", "🎣"),
-    HOME_CRAFTS("Hogar, Madera y Conservas", "Hogar y Madera", "🏡")
-}
-
-@Immutable
-data class LunarAlmanacGuideItem(
-    val category: LunarAlmanacCategory,
-    val badgeTitle: String,
-    val actionHighlight: String,
-    val description: String,
-    val scoreOutOfFive: Int
-)
-
-enum class LunarTraditionalGoal(
-    val title: String,
-    val emoji: String,
-    val subtitle: String,
-    val idealPhases: Set<MoonPhaseType>
-) {
-    FAST_HAIR_GROWTH(
-        title = "Corte para Crecimiento Rápido",
-        emoji = "✂️",
-        subtitle = "Estimula el folículo para que el cabello crezca con mayor rapidez.",
-        idealPhases = setOf(MoonPhaseType.WAXING_CRESCENT, MoonPhaseType.FIRST_QUARTER)
-    ),
-    STRONG_THICK_HAIR(
-        title = "Corte para Volumen y Raíz Fuerte",
-        emoji = "🦁",
-        subtitle = "Ideal para cabellos finos o quebradizos; aporta densidad y brillo.",
-        idealPhases = setOf(MoonPhaseType.WAXING_GIBBOUS, MoonPhaseType.FULL_MOON)
-    ),
-    LONG_LASTING_DEPILATION(
-        title = "Depilación Duradera y Lenta",
-        emoji = "🪒",
-        subtitle = "El vello tarda más en reaparecer y se debilita progresivamente.",
-        idealPhases = setOf(MoonPhaseType.LAST_QUARTER, MoonPhaseType.WANING_CRESCENT)
-    ),
-    SKIN_NUTRITION_GLOW(
-        title = "Mascarillas Nutritivas y Colágeno",
-        emoji = "💆‍♀️",
-        subtitle = "Máxima absorción de sérums, vitaminas, aceites e hidratación profunda.",
-        idealPhases = setOf(MoonPhaseType.FIRST_QUARTER, MoonPhaseType.WAXING_GIBBOUS)
-    ),
-    SKIN_DETOX_EXFOLIATION(
-        title = "Limpieza Facial, Peeling y Detox",
-        emoji = "🧖‍♀️",
-        subtitle = "Eliminación de impurezas, puntos negros, toxinas y retención de líquidos.",
-        idealPhases = setOf(MoonPhaseType.WANING_GIBBOUS, MoonPhaseType.LAST_QUARTER, MoonPhaseType.NEW_MOON)
-    ),
-    PLANTING_FRUITS_FLOWERS(
-        title = "Siembra de Flores, Hojas y Frutos",
-        emoji = "🌱",
-        subtitle = "Impulso ascendente de la savia para germinación y desarrollo aéreo.",
-        idealPhases = setOf(MoonPhaseType.WAXING_CRESCENT, MoonPhaseType.FIRST_QUARTER)
-    ),
-    PRUNING_AND_TIMBER(
-        title = "Poda, Tubérculos y Corte de Madera",
-        emoji = "🪵",
-        subtitle = "Savia en las raíces; cicatrización limpia y maderas resistentes a insectos.",
-        idealPhases = setOf(MoonPhaseType.LAST_QUARTER, MoonPhaseType.WANING_CRESCENT)
-    )
-}
+import kotlin.math.sqrt
 
 enum class MoonPhaseType(
     val spanishName: String,
     val shortLabel: String,
     val emoji: String,
-    val isMajorPhase: Boolean,
-    val beautySkinTip: String,
-    val beautyActionBadge: String,
-    val hairCareTip: String,
-    val hairActionBadge: String,
-    val wellnessTip: String,
-    val wellnessActionBadge: String,
-    val gardeningTip: String,
-    val stargazingTip: String,
-    val tideEffect: String,
-    val fishingFaunaTip: String,
-    val homeTimberTip: String
+    val isMajorPhase: Boolean
 ) {
     NEW_MOON(
         spanishName = "Luna Nueva",
         shortLabel = "Nueva",
         emoji = "🌑",
-        isMajorPhase = true,
-        beautySkinTip = "Fase de renovación celular y desintoxicación profunda. Ideal para baños de vapor, arcillas purificantes, descanso de maquillaje y regeneración de la barrera cutánea.",
-        beautyActionBadge = "Detox y Renovación Cutánea",
-        hairCareTip = "Evita cortes radicales o químicos agresivos hoy; el cuero cabelludo está en reposo. Excelente día para masajes capilares relajantes y aceites reparadores en puntas.",
-        hairActionBadge = "Reposo Capilar y Reparación",
-        wellnessTip = "Ciclo de introspección, ayuno ligero o infusiones depurativas. Prioriza el sueño reparador, la meditación y establecer intenciones para el nuevo ciclo lunar.",
-        wellnessActionBadge = "Introspección y Detox",
-        gardeningTip = "Ideal para reposo del suelo, poda de limpieza, escarda y control natural de malezas.",
-        stargazingTip = "Cielo oscuro óptimo (0% brillo lunar) para observar galaxias, nebulosas, cúmulos y la Vía Láctea.",
-        tideEffect = "Mareas vivas (sicigia): alineación Sol-Luna-Tierra con amplitud máxima de pleamar y bajamar.",
-        fishingFaunaTip = "Alta actividad solunar: excelente picada durante el tránsito lunar superior e inferior.",
-        homeTimberTip = "Óptimo para limpieza profunda del hogar, desechar objetos en desuso y airear habitaciones."
+        isMajorPhase = true
     ),
     WAXING_CRESCENT(
         spanishName = "Luna Creciente",
         shortLabel = "Creciente",
         emoji = "🌒",
-        isMajorPhase = false,
-        beautySkinTip = "La piel inicia su fase receptiva. Aplica cremas hidratantes, ácido hialurónico, vitamina C y contornos de ojos para revitalizar el rostro con rápida absorción.",
-        beautyActionBadge = "Hidratación y Luminosidad",
-        hairCareTip = "¡Momento estrella para cortar las puntas si deseas que el cabello crezca rápido y largo! También favorece la aplicación de tónicos estimulantes del folículo.",
-        hairActionBadge = "Corte: Crecimiento Rápido",
-        wellnessTip = "Energía física en ascenso: ideal para iniciar nuevas rutinas de ejercicio, aumentar el consumo de proteínas/minerales y retomar hábitos saludables.",
-        wellnessActionBadge = "Vitalidad en Ascenso",
-        gardeningTip = "La savia comienza a subir: excelente para sembrar hortalizas de hoja, hierbas aromáticas y flores.",
-        stargazingTip = "Luz cenicienta (brillo terrestre) visible sobre el limbo oscuro al atardecer occidental.",
-        tideEffect = "Mareas en transición descendente tras la sicigia de Luna Nueva.",
-        fishingFaunaTip = "Buena actividad de peces en aguas superficiales desde el atardecer hasta la puesta lunar.",
-        homeTimberTip = "Propicio para iniciar fermentados suaves, pan de masa madre y organización de despensa."
+        isMajorPhase = false
     ),
     FIRST_QUARTER(
         spanishName = "Cuarto Creciente",
         shortLabel = "C. Creciente",
         emoji = "🌓",
-        isMajorPhase = true,
-        beautySkinTip = "Alta capacidad de asimilación epidérmica. Momento ideal para mascarillas nutritivas, reafirmantes, colágeno, masajes faciales lifting y cuidado fortalecedor de uñas.",
-        beautyActionBadge = "Nutrición y Firmeza Facial",
-        hairCareTip = "Excelente para cortar el cabello buscando crecimiento acelerado y vitalidad, así como para aplicar tintes vegetales, baños de color o tratamientos de keratina.",
-        hairActionBadge = "Crecimiento y Coloración",
-        wellnessTip = "Pico de motivación y resistencia muscular. Aprovecha para entrenamientos de fuerza, actividades al aire libre y proyectos que requieran concentración activa.",
-        wellnessActionBadge = "Fuerza y Acción",
-        gardeningTip = "Favorece plantas de fruto (tomate, pimiento, fresa), cereales y trasplantes de crecimiento vigoroso.",
-        stargazingTip = "El terminador al 50% muestra cráteres y cordilleras lunares con máximo relieve tridimensional.",
-        tideEffect = "Mareas muertas (cuadratura): menor diferencia entre pleamar y bajamar; aguas más estables.",
-        fishingFaunaTip = "Actividad moderada; mejores capturas al amanecer y cuando la Luna cruza el meridiano.",
-        homeTimberTip = "Buen momento para elaborar conservas dulces, mermeladas y trasvasar líquidos claros."
+        isMajorPhase = true
     ),
     WAXING_GIBBOUS(
         spanishName = "Gibosa Creciente",
         shortLabel = "Gibosa Crec.",
         emoji = "🌔",
-        isMajorPhase = false,
-        beautySkinTip = "Máxima retención de hidratación y principios activos. Aplica ampollas regeneradoras nocturnas, aceites faciales antioxidantes y tratamientos intensivos para labios y manos.",
-        beautyActionBadge = "Regeneración Intensiva",
-        hairCareTip = "Ideal para cortar el pelo si buscas ganar cuerpo, densidad y fortalecer la raíz. Los tintes y mechas aplicados hoy fijan el pigmento con gran intensidad y brillo.",
-        hairActionBadge = "Volumen, Brillo y Tinte",
-        wellnessTip = "El organismo absorbe todo con mayor eficacia: prioriza alimentos frescos ricos en antioxidantes y evita excesos de sal o azúcares refinados.",
-        wellnessActionBadge = "Máxima Absorción Nutricional",
-        gardeningTip = "Máxima absorción de nutrientes y agua; ideal para injertos, esquejes y abonos foliares.",
-        stargazingTip = "Excelente visibilidad de los grandes mares lunares, Sinus Iridum y el cráter Copérnico.",
-        tideEffect = "Mareas en aumento progresivo hacia el plenilunio.",
-        fishingFaunaTip = "Incremento notable del movimiento de cardúmenes en las horas previas a la Luna Llena.",
-        homeTimberTip = "Evita cortar madera para construcción hoy (mayor contenido de savia y humedad interna)."
+        isMajorPhase = false
     ),
     FULL_MOON(
         spanishName = "Luna Llena",
         shortLabel = "Llena",
         emoji = "🌕",
-        isMajorPhase = true,
-        beautySkinTip = "Plenitud circulatoria y luminosidad cutánea. Ideal para rituales de spa, mascarillas iluminadoras de efecto inmediato y masajes linfáticos suaves (evita extracciones agresivas).",
-        beautyActionBadge = "Glow, Spa y Masaje Linfático",
-        hairCareTip = "Tradición clásica para cortar cabellos débiles, finos o sin vida: estimula un crecimiento abundante, grueso y resistente. Ideal para mascarillas de nutrición profunda.",
-        hairActionBadge = "Corte: Abundancia y Fuerza",
-        wellnessTip = "Sensibilidad y energía emocional al máximo. Practica respiración consciente, yoga suave o baños tibios antes de dormir, ya que el sueño puede ser más ligero.",
-        wellnessActionBadge = "Plenitud y Calma Nocturna",
-        gardeningTip = "Savia concentrada en la copa y frutos: momento óptimo para cosechar frutos jugosos y plantas medicinales.",
-        stargazingTip = "Disco 100% iluminado; destacan los sistemas de rayos brillantes de Tycho, Kepler y Aristarco.",
-        tideEffect = "Mareas vivas (sicigia): fuerte atracción gravitatoria combinada Sol-Luna con oleaje intenso.",
-        fishingFaunaTip = "Pico solunar nocturno: intensa actividad de especies depredadoras bajo la luz del plenilunio.",
-        homeTimberTip = "Excelente para recolectar hierbas aromáticas para secado y preparar macerados naturales."
+        isMajorPhase = true
     ),
     WANING_GIBBOUS(
         spanishName = "Gibosa Menguante",
         shortLabel = "Gibosa Meng.",
         emoji = "🌖",
-        isMajorPhase = false,
-        beautySkinTip = "Comienza la fase depurativa de la piel. Excelente para exfoliación suave, limpieza de poros, tratamientos anti-acné, drenaje de bolsas/ojeras y reducción de celulitis.",
-        beautyActionBadge = "Exfoliación y Drenaje",
-        hairCareTip = "Si tienes el cabello muy corto o con corte estructurado y quieres que mantenga su forma por más tiempo sin perder el diseño, corta hoy. Buen inicio para depilación.",
-        hairActionBadge = "Mantener Forma del Corte",
-        wellnessTip = "El cuerpo elimina líquidos y toxinas con facilidad. Muy favorable para saunas, masajes descontracturantes, infusiones drenantes y estiramientos profundos.",
-        wellnessActionBadge = "Liberación y Drenaje",
-        gardeningTip = "La savia empieza a descender hacia las raíces; propicio para sembrar tubérculos (papa, zanahoria, rábano).",
-        stargazingTip = "Salida de la Luna tras el anochecer con excelente contraste en el limbo oriental (Mar de las Crisis).",
-        tideEffect = "Mareas moderadas-altas disminuyendo gradualmente tras el plenilunio.",
-        fishingFaunaTip = "Muy buena pesca en las primeras horas de la mañana mientras la Luna aún es visible.",
-        homeTimberTip = "Favorable para lavar textiles pesados, quitar manchas difíciles y ventilar colchones."
+        isMajorPhase = false
     ),
     LAST_QUARTER(
         spanishName = "Cuarto Menguante",
         shortLabel = "C. Menguante",
         emoji = "🌗",
-        isMajorPhase = true,
-        beautySkinTip = "El mejor momento del mes para limpieza facial profunda, extracción de comedones, peelings renovadores, mascarillas de carbón/arcilla y tratamientos purificantes.",
-        beautyActionBadge = "Limpieza Profunda y Peeling",
-        hairCareTip = "¡Fase óptima para la depilación! El vello tarda mucho más en crecer y nace más fino. Cortar el cabello hoy fortalece la raíz reduciendo la caída (crecimiento lento).",
-        hairActionBadge = "Depilación Duradera y Anticaída",
-        wellnessTip = "Ideal para cerrar ciclos, reducir el estrés acumulado, cuidar articulaciones y realizar rutinas de cardio moderado o caminatas en la naturaleza.",
-        wellnessActionBadge = "Equilibrio y Depuración",
-        gardeningTip = "Ideal para podas de formación, trasplante de raíces, bulbos, abonado orgánico y compostaje.",
-        stargazingTip = "Visible en la madrugada y mañana; relieve inverso espectacular en los Montes Apeninos.",
-        tideEffect = "Mareas muertas (cuadratura): corrientes marinas más suaves y menor amplitud de marea.",
-        fishingFaunaTip = "Aguas tranquilas con corrientes suaves; ideal para pesca de fondo y especies de roca.",
-        homeTimberTip = "Tradición maderera: mejor fase para talar o cortar madera, guadua y bambú (secado firme sin polilla)."
+        isMajorPhase = true
     ),
     WANING_CRESCENT(
         spanishName = "Luna Menguante",
         shortLabel = "Menguante",
         emoji = "🌘",
-        isMajorPhase = false,
-        beautySkinTip = "Fase balsámica calmante. Ideal para pieles sensibles o reactivas, aguas termales, aloe vera, caléndula, pedicura terapéutica y eliminación de callosidades.",
-        beautyActionBadge = "Calma Cutánea y Pedicura",
-        hairCareTip = "Segundo momento clave para depilación de larga duración y diseño de cejas. En cabello, aplica lavados detox de cuero cabelludo para eliminar residuos.",
-        hairActionBadge = "Depilación y Detox Capilar",
-        wellnessTip = "Disminuye el ritmo físico intenso; favorece el descanso profundo, baños de sales de Epsom, lectura tranquila y preparación mental para el novilunio.",
-        wellnessActionBadge = "Descanso y Serenidad",
-        gardeningTip = "Fase balsámica de descanso vegetal, deshierbe duradero, arado y preparación de sustratos.",
-        stargazingTip = "Fino creciente matutino antes del alba; cielos nocturnos despejados de brillo lunar.",
-        tideEffect = "Mareas aumentando progresivamente hacia el nuevo ciclo sinódico.",
-        fishingFaunaTip = "Excelente actividad solunar al amanecer coincidiendo con la salida del fino creciente.",
-        homeTimberTip = "Ideal para embotellar vinos/vinagres decantados, curar maderas y ordenar espacios de trabajo."
-    );
+        isMajorPhase = false
+    )
+}
 
-    private val cachedGuides: List<LunarAlmanacGuideItem> by lazy {
-        listOf(
-            LunarAlmanacGuideItem(
-                category = LunarAlmanacCategory.BEAUTY_SKIN,
-                badgeTitle = "Belleza y Cuidado de la Piel",
-                actionHighlight = beautyActionBadge,
-                description = beautySkinTip,
-                scoreOutOfFive = when (this) {
-                    FIRST_QUARTER, WAXING_GIBBOUS, FULL_MOON, LAST_QUARTER -> 5
-                    else -> 4
-                }
-            ),
-            LunarAlmanacGuideItem(
-                category = LunarAlmanacCategory.HAIR_CARE,
-                badgeTitle = "Cabello, Corte y Depilación",
-                actionHighlight = hairActionBadge,
-                description = hairCareTip,
-                scoreOutOfFive = when (this) {
-                    WAXING_CRESCENT, FIRST_QUARTER, FULL_MOON, LAST_QUARTER -> 5
-                    WAXING_GIBBOUS, WANING_CRESCENT -> 4
-                    else -> 3
-                }
-            ),
-            LunarAlmanacGuideItem(
-                category = LunarAlmanacCategory.WELLNESS,
-                badgeTitle = "Bienestar, Cuerpo y Energía",
-                actionHighlight = wellnessActionBadge,
-                description = wellnessTip,
-                scoreOutOfFive = 5
-            ),
-            LunarAlmanacGuideItem(
-                category = LunarAlmanacCategory.GARDENING,
-                badgeTitle = "Agricultura y Jardín",
-                actionHighlight = if (this in setOf(WAXING_CRESCENT, FIRST_QUARTER, WAXING_GIBBOUS, FULL_MOON)) {
-                    "Savia Ascendente / Copa"
-                } else {
-                    "Savia Descendente / Raíz"
-                },
-                description = gardeningTip,
-                scoreOutOfFive = 5
-            ),
-            LunarAlmanacGuideItem(
-                category = LunarAlmanacCategory.ASTRONOMY,
-                badgeTitle = "Observación Astronómica",
-                actionHighlight = if (this == NEW_MOON) "Cielo Profundo Óptimo" else "Relieve y Mares Lunares",
-                description = stargazingTip,
-                scoreOutOfFive = if (this in setOf(NEW_MOON, FIRST_QUARTER, LAST_QUARTER)) 5 else 4
-            ),
-            LunarAlmanacGuideItem(
-                category = LunarAlmanacCategory.TIDES,
-                badgeTitle = "Dinámica de Mareas",
-                actionHighlight = if (this in setOf(NEW_MOON, FULL_MOON)) "Mareas Vivas (Sicigia)" else "Mareas Moderadas / Muertas",
-                description = tideEffect,
-                scoreOutOfFive = if (this in setOf(NEW_MOON, FULL_MOON)) 5 else 4
-            ),
-            LunarAlmanacGuideItem(
-                category = LunarAlmanacCategory.FISHING,
-                badgeTitle = "Pesca y Ciclo Solunar",
-                actionHighlight = if (this in setOf(NEW_MOON, FULL_MOON)) "Actividad Solunar Máxima" else "Actividad Solunar Media-Alta",
-                description = fishingFaunaTip,
-                scoreOutOfFive = if (this in setOf(NEW_MOON, FULL_MOON, WAXING_GIBBOUS)) 5 else 4
-            ),
-            LunarAlmanacGuideItem(
-                category = LunarAlmanacCategory.HOME_CRAFTS,
-                badgeTitle = "Hogar, Madera y Conservas",
-                actionHighlight = if (this == LAST_QUARTER) "Corte Óptimo de Madera" else "Tradición Doméstica",
-                description = homeTimberTip,
-                scoreOutOfFive = if (this in setOf(LAST_QUARTER, WANING_CRESCENT, FIRST_QUARTER)) 5 else 4
-            )
-        )
-    }
+enum class LunarEclipseKind {
+    NONE,
+    PENUMBRAL,
+    PARTIAL,
+    TOTAL
+}
 
-    fun almanacGuides(): List<LunarAlmanacGuideItem> = cachedGuides
+enum class SolarEclipseKind {
+    NONE,
+    PARTIAL,
+    ANNULAR,
+    HYBRID,
+    TOTAL
 }
 
 @Immutable
@@ -376,17 +147,20 @@ data class SimpleDate(
 @Immutable
 data class LunarDayInfo(
     val date: SimpleDate,
-    val phaseFraction: Double,      // 0.0 (New) -> 0.5 (Full) -> 1.0 (New)
-    val illuminationPercent: Double, // 0.0 .. 100.0
-    val lunarAgeDays: Double,        // 0.0 .. 29.5306
-    val distanceKm: Int,             // ~356,500 .. 406,700 km
-    val zodiacSign: String,
+    val phaseFraction: Double,          // 0.0 (New) -> 0.5 (Full) -> 1.0 (New)
+    val illuminationPercent: Double,    // 0.0 .. 100.0 (true selenocentric phase angle)
+    val lunarAgeDays: Double,           // Days elapsed since exact preceding New Moon
+    val distanceKm: Int,                // ~356,400 .. 406,700 km (Meeus Ch. 47)
+    val angularDiameterArcmin: Double,  // ~29.4' .. 33.5' apparent lunar diameter
+    val eclipticLongitudeDeg: Double,   // 0.0° .. 360.0° geocentric ecliptic longitude
+    val eclipticLatitudeDeg: Double,    // -5.3° .. +5.3° geocentric ecliptic latitude
+    val zodiacSign: String,             // Real ecliptic sector from true longitude
+    val zodiacDegreeInSign: Double,     // 0.0° .. 30.0° within sector
     val phaseType: MoonPhaseType,
     val isExactMajorPhaseDay: Boolean,
     val isSupermoon: Boolean = false,
-    val moonriseTime: String = "06:00",
-    val moonsetTime: String = "18:00",
-    val meridianTransitTime: String = "12:00"
+    val lunarEclipseKind: LunarEclipseKind = LunarEclipseKind.NONE,
+    val solarEclipseKind: SolarEclipseKind = SolarEclipseKind.NONE
 )
 
 @Immutable
@@ -420,15 +194,21 @@ data class CelestialEvent(
     val phaseType: MoonPhaseType
 )
 
+/**
+ * Pure astronomical ephemeris engine implementing Jean Meeus ("Astronomical Algorithms",
+ * 2nd Ed., Chapters 25, 47, 48, 49, and 54).
+ * Zero hardcoded lookup tables, zero simulated local horizon guesses, zero location permissions.
+ */
 object LunarAstronomer {
-    const val SYNODIC_MONTH_DAYS = 29.530588853
-    private const val ANOMALISTIC_MONTH_DAYS = 27.554550
-    private const val TROPICAL_MONTH_DAYS = 27.321582
-    // Known reference New Moon: Jan 6, 2000 at 18:14 UTC -> JD 2451550.1
-    private const val REFERENCE_NEW_MOON_JD = 2451550.1
-    private const val REFERENCE_PERIGEE_JD = 2451562.2
+    const val SYNODIC_MONTH_DAYS = 29.530588861
+    private const val J2000_JD = 2451545.0
+    private const val MEEUS_EPOCH_NEW_MOON_JDE = 2451550.09766
+    private const val DEG_TO_RAD = PI / 180.0
+    private const val RAD_TO_DEG = 180.0 / PI
+    private const val MOON_MEAN_RADIUS_KM = 1737.4
+    private const val AU_IN_KM = 149597870.7
 
-    private val ZODIAC_CONSTELLATIONS = listOf(
+    private val ZODIAC_SECTORS = listOf(
         "Aries ♈", "Tauro ♉", "Géminis ♊", "Cáncer ♋",
         "Leo ♌", "Virgo ♍", "Libra ♎", "Escorpio ♏",
         "Sagitario ♐", "Capricornio ♑", "Acuario ♒", "Piscis ♓"
@@ -440,6 +220,17 @@ object LunarAstronomer {
     )
 
     val SPANISH_WEEKDAYS_SHORT = listOf("Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom")
+
+    private val WEEKDAY_NAMES_FROM_MONDAY = arrayOf(
+        "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"
+    )
+
+    // Bounded LRU cache (512 dates) so multi-month grids and upcoming ephemeris searches never thrash
+    private val lunarInfoCache = object : LinkedHashMap<Int, LunarDayInfo>(512, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, LunarDayInfo>?): Boolean {
+            return size > 512
+        }
+    }
 
     fun today(): SimpleDate {
         val cal = Calendar.getInstance()
@@ -497,19 +288,7 @@ object LunarAstronomer {
         return (jd2 - jd1).roundToInt()
     }
 
-    // Bounded LRU cache (512 dates) so multi-month grids and upcoming ephemeris searches never thrash
-    private val lunarInfoCache = object : LinkedHashMap<Int, LunarDayInfo>(512, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, LunarDayInfo>?): Boolean {
-            return size > 512
-        }
-    }
-
-    private val WEEKDAY_NAMES_FROM_MONDAY = arrayOf(
-        "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"
-    )
-
     private fun getDayOfWeekIndexFromMonday(year: Int, month: Int, day: Int): Int {
-        // Pure Julian Day arithmetic: 0 = Monday .. 6 = Sunday
         val jdNoon = toJulianDay(year, month, day)
         return (((floor(jdNoon + 0.5).toLong() % 7L) + 7L).toInt() % 7)
     }
@@ -529,11 +308,389 @@ object LunarAstronomer {
         else -> 30
     }
 
-    private fun rawPhaseFractionForJd(jd: Double): Double {
-        val cycles = (jd - REFERENCE_NEW_MOON_JD) / SYNODIC_MONTH_DAYS
-        var frac = cycles - floor(cycles)
-        if (frac < 0) frac += 1.0
-        return frac
+    private fun norm360(deg: Double): Double {
+        var r = deg % 360.0
+        if (r < 0.0) r += 360.0
+        return r
+    }
+
+    private fun norm180(deg: Double): Double {
+        var r = norm360(deg)
+        if (r > 180.0) r -= 360.0
+        return r
+    }
+
+    private fun sinDeg(deg: Double): Double = sin(deg * DEG_TO_RAD)
+    private fun cosDeg(deg: Double): Double = cos(deg * DEG_TO_RAD)
+
+    /**
+     * Approximate Terrestrial Time minus Universal Time (Delta-T = TT - UTC) in days
+     * using NASA Espenak & Meeus polynomial approximations.
+     */
+    private fun estimateDeltaTDays(decimalYear: Double): Double {
+        val deltaTSeconds = when {
+            decimalYear < 2005.0 -> {
+                val t = decimalYear - 2000.0
+                63.86 + 0.3345 * t - 0.060374 * t * t
+            }
+            decimalYear <= 2050.0 -> {
+                val t = decimalYear - 2000.0
+                62.92 + 0.32217 * t + 0.005589 * t * t
+            }
+            else -> {
+                val u = (decimalYear - 1820.0) / 100.0
+                -20.0 + 32.0 * u * u
+            }
+        }
+        return deltaTSeconds / 86400.0
+    }
+
+    /**
+     * Computes exact UTC Julian Day of a true lunar phase (Jean Meeus Chapter 49):
+     * [quarterIndex]: 0 = New Moon, 1 = First Quarter, 2 = Full Moon, 3 = Last Quarter.
+     */
+    private fun computeExactPhaseJdUtc(lunationK: Int, quarterIndex: Int): Double {
+        val kEff = lunationK.toDouble() + quarterIndex * 0.25
+        val t = kEff / 1236.85
+        val t2 = t * t
+        val t3 = t2 * t
+        val t4 = t3 * t
+
+        val jdeMean = MEEUS_EPOCH_NEW_MOON_JDE +
+            SYNODIC_MONTH_DAYS * kEff +
+            0.00015437 * t2 -
+            0.000000150 * t3 +
+            0.00000000073 * t4
+
+        val e = 1.0 - 0.002516 * t - 0.0000074 * t2
+        val m = norm360(2.5534 + 29.10535670 * kEff - 0.0000014 * t2 - 0.00000011 * t3)
+        val mPrime = norm360(
+            201.5643 + 385.81693528 * kEff + 0.0107582 * t2 + 0.00001238 * t3 - 0.000000058 * t4
+        )
+        val f = norm360(
+            160.7108 + 390.67050284 * kEff - 0.0016118 * t2 - 0.00000227 * t3 + 0.000000011 * t4
+        )
+        val omega = norm360(124.7746 - 1.56375588 * kEff + 0.0020672 * t2 + 0.00000215 * t3)
+
+        val correction = when (quarterIndex) {
+            0 -> { // New Moon
+                -0.40720 * sinDeg(mPrime) +
+                    0.17241 * e * sinDeg(m) +
+                    0.01608 * sinDeg(2.0 * mPrime) +
+                    0.01039 * sinDeg(2.0 * f) +
+                    0.00739 * e * sinDeg(mPrime - m) -
+                    0.00514 * e * sinDeg(mPrime + m) +
+                    0.00208 * e * e * sinDeg(2.0 * m) -
+                    0.00111 * sinDeg(mPrime - 2.0 * f) -
+                    0.00057 * sinDeg(mPrime + 2.0 * f) +
+                    0.00056 * e * sinDeg(2.0 * mPrime + m) -
+                    0.00042 * sinDeg(3.0 * mPrime) +
+                    0.00042 * e * sinDeg(m + 2.0 * f) +
+                    0.00038 * e * sinDeg(m - 2.0 * f) -
+                    0.00024 * e * sinDeg(2.0 * mPrime - m) -
+                    0.00017 * sinDeg(omega)
+            }
+            2 -> { // Full Moon
+                -0.40614 * sinDeg(mPrime) +
+                    0.17302 * e * sinDeg(m) +
+                    0.01614 * sinDeg(2.0 * mPrime) +
+                    0.01043 * sinDeg(2.0 * f) +
+                    0.00734 * e * sinDeg(mPrime - m) -
+                    0.00515 * e * sinDeg(mPrime + m) +
+                    0.00209 * e * e * sinDeg(2.0 * m) -
+                    0.00111 * sinDeg(mPrime - 2.0 * f) -
+                    0.00057 * sinDeg(mPrime + 2.0 * f) +
+                    0.00056 * e * sinDeg(2.0 * mPrime + m) -
+                    0.00042 * sinDeg(3.0 * mPrime) +
+                    0.00042 * e * sinDeg(m + 2.0 * f) +
+                    0.00038 * e * sinDeg(m - 2.0 * f) -
+                    0.00024 * e * sinDeg(2.0 * mPrime - m) -
+                    0.00017 * sinDeg(omega)
+            }
+            else -> { // First Quarter (1) or Last Quarter (3)
+                val baseQ = -0.62801 * sinDeg(mPrime) +
+                    0.17172 * e * sinDeg(m) -
+                    0.01183 * e * sinDeg(mPrime + m) +
+                    0.00862 * sinDeg(2.0 * mPrime) +
+                    0.00804 * sinDeg(2.0 * f) +
+                    0.00454 * e * sinDeg(mPrime - m) +
+                    0.00204 * e * e * sinDeg(2.0 * m) -
+                    0.00180 * sinDeg(mPrime - 2.0 * f) -
+                    0.00070 * sinDeg(mPrime + 2.0 * f) -
+                    0.00040 * sinDeg(3.0 * mPrime) -
+                    0.00034 * e * sinDeg(2.0 * mPrime - m) +
+                    0.00032 * e * sinDeg(m + 2.0 * f) +
+                    0.00032 * e * sinDeg(m - 2.0 * f) -
+                    0.00017 * sinDeg(omega)
+                val w = 0.00306 -
+                    0.00038 * e * cosDeg(m) +
+                    0.00026 * cosDeg(mPrime) -
+                    0.00002 * cosDeg(mPrime - m) +
+                    0.00002 * cosDeg(mPrime + m) +
+                    0.00002 * cosDeg(2.0 * f)
+                if (quarterIndex == 1) baseQ + w else baseQ - w
+            }
+        }
+
+        val jdeTrue = jdeMean + correction
+        val approxYear = 2000.0 + (jdeTrue - J2000_JD) / 365.2425
+        return jdeTrue - estimateDeltaTDays(approxYear)
+    }
+
+    private data class ComputedSolarEclipse(
+        val date: SimpleDate,
+        val jdMaxUtc: Double,
+        val kind: SolarEclipseKind,
+        val gamma: Double,
+        val u: Double,
+        val partialMagnitude: Double
+    )
+
+    private data class ComputedLunarEclipse(
+        val date: SimpleDate,
+        val jdMaxUtc: Double,
+        val kind: LunarEclipseKind,
+        val gamma: Double,
+        val umbralMagnitude: Double,
+        val penumbralMagnitude: Double
+    )
+
+    /**
+     * Dynamically computes Solar Eclipse Besselian elements for New Moon [lunationK]
+     * using Jean Meeus Chapter 54 (works for any century without lookup tables).
+     */
+    private fun evaluateSolarEclipseAtLunation(lunationK: Int): ComputedSolarEclipse? {
+        val kEff = lunationK.toDouble()
+        val t = kEff / 1236.85
+        val t2 = t * t
+        val t3 = t2 * t
+        val t4 = t3 * t
+
+        val f = norm360(
+            160.7108 + 390.67050284 * kEff - 0.0016118 * t2 - 0.00000227 * t3 + 0.000000011 * t4
+        )
+        if (abs(sinDeg(f)) > 0.36) return null
+
+        val jdeMean = MEEUS_EPOCH_NEW_MOON_JDE +
+            SYNODIC_MONTH_DAYS * kEff +
+            0.00015437 * t2 -
+            0.000000150 * t3 +
+            0.00000000073 * t4
+
+        val e = 1.0 - 0.002516 * t - 0.0000074 * t2
+        val m = norm360(2.5534 + 29.10535670 * kEff - 0.0000014 * t2 - 0.00000011 * t3)
+        val mPrime = norm360(
+            201.5643 + 385.81693528 * kEff + 0.0107582 * t2 + 0.00001238 * t3 - 0.000000058 * t4
+        )
+        val omega = norm360(124.7746 - 1.56375588 * kEff + 0.0020672 * t2 + 0.00000215 * t3)
+        val f1 = f - 0.02665 * sinDeg(omega)
+        val a1 = norm360(299.77 + 0.107408 * kEff - 0.009173 * t2)
+
+        val jdeMax = jdeMean -
+            0.4075 * sinDeg(mPrime) +
+            0.1721 * e * sinDeg(m) +
+            0.0161 * sinDeg(2.0 * mPrime) -
+            0.0097 * sinDeg(2.0 * f1) +
+            0.0073 * e * sinDeg(mPrime - m) -
+            0.0050 * e * sinDeg(mPrime + m) -
+            0.0023 * sinDeg(mPrime - 2.0 * f1) +
+            0.0021 * e * sinDeg(2.0 * m) +
+            0.0012 * sinDeg(mPrime + 2.0 * f1) +
+            0.0006 * e * sinDeg(2.0 * mPrime + m) -
+            0.0004 * sinDeg(3.0 * mPrime) -
+            0.0003 * e * sinDeg(m + 2.0 * f1) +
+            0.0003 * sinDeg(a1) -
+            0.0002 * e * sinDeg(m - 2.0 * f1) -
+            0.0002 * e * sinDeg(2.0 * mPrime - m) -
+            0.0002 * sinDeg(omega)
+
+        val p = 0.2070 * e * sinDeg(m) +
+            0.0024 * e * sinDeg(2.0 * m) -
+            0.0392 * sinDeg(mPrime) +
+            0.0116 * sinDeg(2.0 * mPrime) -
+            0.0073 * e * sinDeg(mPrime + m) +
+            0.0067 * e * sinDeg(mPrime - m) +
+            0.0118 * sinDeg(2.0 * f1)
+
+        val q = 5.2207 -
+            0.0048 * e * cosDeg(m) +
+            0.0020 * e * cosDeg(2.0 * m) -
+            0.3299 * cosDeg(mPrime) -
+            0.0060 * e * cosDeg(mPrime + m) +
+            0.0041 * e * cosDeg(mPrime - m)
+
+        val w = abs(cosDeg(f1))
+        val gamma = (p * cosDeg(f1) + q * sinDeg(f1)) * (1.0 - 0.0048 * w)
+        val u = 0.0059 +
+            0.0046 * e * cosDeg(m) -
+            0.0182 * cosDeg(mPrime) +
+            0.0004 * cosDeg(2.0 * mPrime) -
+            0.0005 * cosDeg(m + mPrime)
+
+        val absGamma = abs(gamma)
+        val outerLimit = 1.5433 + u
+        if (absGamma > outerLimit) return null
+
+        val kind = when {
+            absGamma <= 0.9972 -> {
+                when {
+                    u < 0.0 -> SolarEclipseKind.TOTAL
+                    u > 0.0047 -> SolarEclipseKind.ANNULAR
+                    else -> {
+                        val omegaHybrid = 0.00464 * sqrt((1.0 - gamma * gamma).coerceAtLeast(0.0))
+                        if (u < omegaHybrid) SolarEclipseKind.HYBRID else SolarEclipseKind.ANNULAR
+                    }
+                }
+            }
+            absGamma < 0.9972 + abs(u) -> {
+                if (u < 0.0) SolarEclipseKind.TOTAL else SolarEclipseKind.ANNULAR
+            }
+            else -> SolarEclipseKind.PARTIAL
+        }
+
+        val partialMag = ((1.5433 + u - absGamma) / (0.5461 + 2.0 * u)).coerceIn(0.01, 1.0)
+        val approxYear = 2000.0 + (jdeMax - J2000_JD) / 365.2425
+        val jdMaxUtc = jdeMax - estimateDeltaTDays(approxYear)
+        return ComputedSolarEclipse(
+            date = fromJulianDay(jdMaxUtc),
+            jdMaxUtc = jdMaxUtc,
+            kind = kind,
+            gamma = gamma,
+            u = u,
+            partialMagnitude = partialMag
+        )
+    }
+
+    /**
+     * Dynamically computes Lunar Eclipse Besselian elements for Full Moon [lunationK] + 0.5
+     * using Jean Meeus Chapter 54 (works for any century without lookup tables).
+     */
+    private fun evaluateLunarEclipseAtLunation(lunationK: Int): ComputedLunarEclipse? {
+        val kEff = lunationK.toDouble() + 0.5
+        val t = kEff / 1236.85
+        val t2 = t * t
+        val t3 = t2 * t
+        val t4 = t3 * t
+
+        val f = norm360(
+            160.7108 + 390.67050284 * kEff - 0.0016118 * t2 - 0.00000227 * t3 + 0.000000011 * t4
+        )
+        if (abs(sinDeg(f)) > 0.36) return null
+
+        val jdeMean = MEEUS_EPOCH_NEW_MOON_JDE +
+            SYNODIC_MONTH_DAYS * kEff +
+            0.00015437 * t2 -
+            0.000000150 * t3 +
+            0.00000000073 * t4
+
+        val e = 1.0 - 0.002516 * t - 0.0000074 * t2
+        val m = norm360(2.5534 + 29.10535670 * kEff - 0.0000014 * t2 - 0.00000011 * t3)
+        val mPrime = norm360(
+            201.5643 + 385.81693528 * kEff + 0.0107582 * t2 + 0.00001238 * t3 - 0.000000058 * t4
+        )
+        val omega = norm360(124.7746 - 1.56375588 * kEff + 0.0020672 * t2 + 0.00000215 * t3)
+        val f1 = f - 0.02665 * sinDeg(omega)
+        val a1 = norm360(299.77 + 0.107408 * kEff - 0.009173 * t2)
+
+        val jdeMax = jdeMean -
+            0.4065 * sinDeg(mPrime) +
+            0.1727 * e * sinDeg(m) +
+            0.0161 * sinDeg(2.0 * mPrime) -
+            0.0097 * sinDeg(2.0 * f1) +
+            0.0073 * e * sinDeg(mPrime - m) -
+            0.0050 * e * sinDeg(mPrime + m) -
+            0.0023 * sinDeg(mPrime - 2.0 * f1) +
+            0.0021 * e * sinDeg(2.0 * m) +
+            0.0012 * sinDeg(mPrime + 2.0 * f1) +
+            0.0006 * e * sinDeg(2.0 * mPrime + m) -
+            0.0004 * sinDeg(3.0 * mPrime) -
+            0.0003 * e * sinDeg(m + 2.0 * f1) +
+            0.0003 * sinDeg(a1) -
+            0.0002 * e * sinDeg(m - 2.0 * f1) -
+            0.0002 * e * sinDeg(2.0 * mPrime - m) -
+            0.0002 * sinDeg(omega)
+
+        val p = 0.2070 * e * sinDeg(m) +
+            0.0024 * e * sinDeg(2.0 * m) -
+            0.0392 * sinDeg(mPrime) +
+            0.0116 * sinDeg(2.0 * mPrime) -
+            0.0073 * e * sinDeg(mPrime + m) +
+            0.0067 * e * sinDeg(mPrime - m) +
+            0.0118 * sinDeg(2.0 * f1)
+
+        val q = 5.2207 -
+            0.0048 * e * cosDeg(m) +
+            0.0020 * e * cosDeg(2.0 * m) -
+            0.3299 * cosDeg(mPrime) -
+            0.0060 * e * cosDeg(mPrime + m) +
+            0.0041 * e * cosDeg(mPrime - m)
+
+        val w = abs(cosDeg(f1))
+        val gamma = (p * cosDeg(f1) + q * sinDeg(f1)) * (1.0 - 0.0048 * w)
+        val u = 0.0059 +
+            0.0046 * e * cosDeg(m) -
+            0.0182 * cosDeg(mPrime) +
+            0.0004 * cosDeg(2.0 * mPrime) -
+            0.0005 * cosDeg(m + mPrime)
+
+        val absGamma = abs(gamma)
+        val penumbralMag = (1.5573 + u - absGamma) / 0.5450
+        if (penumbralMag <= 0.0) return null
+
+        val umbralMag = (1.0128 - u - absGamma) / 0.5450
+        val kind = when {
+            umbralMag >= 1.0 -> LunarEclipseKind.TOTAL
+            umbralMag > 0.0 -> LunarEclipseKind.PARTIAL
+            else -> LunarEclipseKind.PENUMBRAL
+        }
+
+        val approxYear = 2000.0 + (jdeMax - J2000_JD) / 365.2425
+        val jdMaxUtc = jdeMax - estimateDeltaTDays(approxYear)
+        return ComputedLunarEclipse(
+            date = fromJulianDay(jdMaxUtc),
+            jdMaxUtc = jdMaxUtc,
+            kind = kind,
+            gamma = gamma,
+            umbralMagnitude = umbralMag,
+            penumbralMagnitude = penumbralMag
+        )
+    }
+
+    private fun formatUtcTimeFromJd(jdUtc: Double): String {
+        val dayFrac = (jdUtc + 0.5) - floor(jdUtc + 0.5)
+        val totalMinutes = ((dayFrac * 1440.0).roundToInt() % 1440 + 1440) % 1440
+        val hh = totalMinutes / 60
+        val mm = totalMinutes % 60
+        return "%02d:%02d UTC".format(Locale.US, hh, mm)
+    }
+
+    private fun describeSolarEclipseVisibility(jdMaxUtc: Double, gamma: Double): String {
+        val dayFrac = (jdMaxUtc + 0.5) - floor(jdMaxUtc + 0.5)
+        val subSolarLon = norm180((0.5 - dayFrac) * 360.0)
+        val latBand = when {
+            gamma > 0.55 -> "Latitudes boreales"
+            gamma < -0.55 -> "Latitudes australes"
+            else -> "Franja tropical y templada"
+        }
+        val lonSector = when {
+            subSolarLon in -45.0..45.0 -> "Europa, África y Atlántico"
+            subSolarLon in 45.0..135.0 -> "Asia, Índico y Oceanía"
+            subSolarLon in -135.0..-45.0 -> "América y Atlántico"
+            else -> "Pacífico, Asia Oriental y América"
+        }
+        return "$latBand • $lonSector (Máx. ${formatUtcTimeFromJd(jdMaxUtc)})"
+    }
+
+    private fun describeLunarEclipseVisibility(jdMaxUtc: Double): String {
+        val dayFrac = (jdMaxUtc + 0.5) - floor(jdMaxUtc + 0.5)
+        val subLunarLon = norm180((0.0 - dayFrac) * 360.0)
+        val nightHemisphere = when {
+            subLunarLon in -45.0..45.0 -> "Europa, África y Atlántico"
+            subLunarLon in 45.0..135.0 -> "Asia, Índico y Oceanía"
+            subLunarLon in -135.0..-45.0 -> "América y Atlántico"
+            else -> "Pacífico, América y Asia Oriental"
+        }
+        return "Hemisferio nocturno: $nightHemisphere (Máx. ${formatUtcTimeFromJd(jdMaxUtc)})"
     }
 
     fun getLunarInfo(date: SimpleDate): LunarDayInfo {
@@ -549,110 +706,208 @@ object LunarAstronomer {
     }
 
     private fun computeLunarInfoInternal(date: SimpleDate): LunarDayInfo {
-        val jd = toJulianDay(date.year, date.month, date.day)
-        val phaseFraction = rawPhaseFractionForJd(jd)
-        val lunarAge = phaseFraction * SYNODIC_MONTH_DAYS
+        val jdUtcNoon = toJulianDay(date.year, date.month, date.day)
+        val approxYear = date.year + (date.month - 0.5) / 12.0
+        val jde = jdUtcNoon + estimateDeltaTDays(approxYear)
 
-        // Spherical illumination percentage
-        val phaseAngle = phaseFraction * 2.0 * PI
-        val illumination = ((1.0 - cos(phaseAngle)) / 2.0) * 100.0
+        // Julian centuries from J2000.0 (Meeus Ch. 47)
+        val t = (jde - J2000_JD) / 36525.0
+        val t2 = t * t
+        val t3 = t2 * t
+        val t4 = t3 * t
 
-        // Earth-Moon orbital distance using anomalistic cycle + solar perturbation
-        val anomCycles = (jd - REFERENCE_PERIGEE_JD) / ANOMALISTIC_MONTH_DAYS
-        val anomAngle = (anomCycles - floor(anomCycles)) * 2.0 * PI
-        val distanceKm = (384400.0 - 20905.0 * cos(anomAngle) - 3699.0 * cos(2 * phaseAngle - anomAngle)).roundToInt()
+        // Fundamental arguments (degrees)
+        val lPrime = norm360(
+            218.3164477 + 481267.88123421 * t - 0.0015786 * t2 + t3 / 538841.0 - t4 / 65194000.0
+        )
+        val d = norm360(
+            297.8501921 + 445267.1114034 * t - 0.0018819 * t2 + t3 / 545868.0 - t4 / 113065000.0
+        )
+        val m = norm360(
+            357.5291092 + 35999.0502909 * t - 0.0001536 * t2 + t3 / 24490000.0
+        )
+        val mPrime = norm360(
+            134.9633964 + 477198.8675055 * t + 0.0087414 * t2 + t3 / 69699.0 - t4 / 14712000.0
+        )
+        val f = norm360(
+            93.2720950 + 483202.0175233 * t - 0.0036539 * t2 - t3 / 3526000.0 + t4 / 863310000.0
+        )
+        val e = 1.0 - 0.002516 * t - 0.0000074 * t2
+        val e2 = e * e
 
-        // Ecliptic zodiac transit
-        val tropCycles = (jd - 2451545.0) / TROPICAL_MONTH_DAYS
-        var tropFrac = tropCycles - floor(tropCycles)
-        if (tropFrac < 0) tropFrac += 1.0
-        val zodiacIdx = (floor(tropFrac * 12.0).toInt()) % 12
-        val zodiacSign = ZODIAC_CONSTELLATIONS[zodiacIdx]
+        // Meeus Table 47.A: Periodic perturbations for Ecliptic Longitude (degrees)
+        val sigmaL = 6.288774 * sinDeg(mPrime) +
+            1.274027 * sinDeg(2.0 * d - mPrime) +
+            0.658314 * sinDeg(2.0 * d) +
+            0.213618 * sinDeg(2.0 * mPrime) -
+            0.185116 * e * sinDeg(m) -
+            0.114332 * sinDeg(2.0 * f) +
+            0.058793 * sinDeg(2.0 * d - 2.0 * mPrime) +
+            0.057066 * e * sinDeg(2.0 * d - m - mPrime) +
+            0.053322 * sinDeg(2.0 * d + mPrime) +
+            0.045758 * e * sinDeg(2.0 * d - m) -
+            0.040923 * e * sinDeg(m - mPrime) -
+            0.034720 * sinDeg(d) -
+            0.030383 * e * sinDeg(m + mPrime) +
+            0.015327 * sinDeg(2.0 * d - 2.0 * f) -
+            0.012528 * sinDeg(mPrime + 2.0 * f) +
+            0.010980 * sinDeg(mPrime - 2.0 * f)
 
-        // Check if this specific day is the closest day to one of the 4 major phases
-        val prevFrac = rawPhaseFractionForJd(jd - 1.0)
-        val nextFrac = rawPhaseFractionForJd(jd + 1.0)
+        val lambdaMoon = norm360(lPrime + sigmaL)
 
-        fun distToTarget(f: Double, target: Double): Double {
-            val d = abs(f - target)
-            return minOf(d, 1.0 - d)
+        // Meeus Table 47.B: Periodic perturbations for Ecliptic Latitude (degrees)
+        val betaMoon = 5.128122 * sinDeg(f) +
+            0.280602 * sinDeg(mPrime + f) +
+            0.277693 * sinDeg(mPrime - f) +
+            0.173237 * sinDeg(2.0 * d - f) +
+            0.055413 * sinDeg(2.0 * d - mPrime + f) +
+            0.046271 * sinDeg(2.0 * d - mPrime - f) +
+            0.032573 * sinDeg(2.0 * d + f) +
+            0.017198 * sinDeg(2.0 * mPrime + f)
+
+        // Meeus Table 47.A: Periodic perturbations for Earth-Moon Distance (km)
+        val sigmaR = -20905.355 * cosDeg(mPrime) -
+            3699.111 * cosDeg(2.0 * d - mPrime) -
+            2955.968 * cosDeg(2.0 * d) -
+            569.925 * cosDeg(2.0 * mPrime) +
+            48.888 * e * cosDeg(m) -
+            3.149 * cosDeg(2.0 * f) +
+            246.158 * cosDeg(2.0 * d - 2.0 * mPrime) -
+            152.138 * e * cosDeg(2.0 * d - m - mPrime) -
+            170.733 * cosDeg(2.0 * d + mPrime) -
+            204.586 * e * cosDeg(2.0 * d - m) -
+            129.620 * e * cosDeg(m - mPrime) +
+            108.743 * cosDeg(d) +
+            104.755 * e * cosDeg(m + mPrime) +
+            79.661 * cosDeg(mPrime - 2.0 * f) -
+            34.782 * cosDeg(4.0 * d - mPrime) +
+            23.210 * e2 * cosDeg(2.0 * d - 2.0 * m)
+
+        val distanceKmDouble = 385000.56 + sigmaR
+        val distanceKm = distanceKmDouble.roundToInt()
+
+        // Apparent angular diameter in arcminutes: 2 * arcsin(R_moon / Delta)
+        val angularDiameterDeg = 2.0 * asin((MOON_MEAN_RADIUS_KM / distanceKmDouble).coerceIn(0.0, 1.0)) * RAD_TO_DEG
+        val angularDiameterArcmin = angularDiameterDeg * 60.0
+
+        // Solar true ecliptic longitude & distance (Meeus Ch. 25)
+        val l0Sun = norm360(280.46646 + 36000.76983 * t + 0.0003032 * t2)
+        val cSun = (1.914602 - 0.004817 * t - 0.000014 * t2) * sinDeg(m) +
+            (0.019993 - 0.000101 * t) * sinDeg(2.0 * m) +
+            0.000289 * sinDeg(3.0 * m)
+        val lambdaSun = norm360(l0Sun + cSun)
+        val earthEcc = 0.016708634 - 0.000042037 * t - 0.0000001267 * t2
+        val sunTrueAnom = m + cSun
+        val sunDistAu = (1.000001018 * (1.0 - earthEcc * earthEcc)) / (1.0 + earthEcc * cosDeg(sunTrueAnom))
+        val sunDistKm = sunDistAu * AU_IN_KM
+
+        // True geocentric elongation & selenocentric phase angle i (Meeus Ch. 48 eq. 48.1-48.2)
+        val deltaLambda = norm360(lambdaMoon - lambdaSun)
+        val cosPsi = (cosDeg(betaMoon) * cosDeg(deltaLambda)).coerceIn(-1.0, 1.0)
+        val psiRad = acos(cosPsi)
+        val phaseAngleRad = atan2(
+            sunDistKm * sin(psiRad),
+            distanceKmDouble - sunDistKm * cosPsi
+        )
+        val illumination = ((1.0 + cos(phaseAngleRad)) / 2.0 * 100.0).coerceIn(0.0, 100.0)
+        val phaseFraction = (deltaLambda / 360.0).coerceIn(0.0, 1.0)
+
+        // Real ecliptic sector & degree within sector
+        val zodiacIdx = (floor(lambdaMoon / 30.0).toInt()).coerceIn(0, 11)
+        val zodiacSign = ZODIAC_SECTORS[zodiacIdx]
+        val zodiacDegreeInSign = lambdaMoon - (zodiacIdx * 30.0)
+
+        // Exact major phase detection & true lunar age via Meeus Ch. 49
+        val kApprox = floor((jdUtcNoon - MEEUS_EPOCH_NEW_MOON_JDE) / SYNODIC_MONTH_DAYS).toInt()
+        var exactMajorQuarter: Int? = null
+        var matchedLunationK: Int = kApprox
+        var latestPrecedingNewMoonJd = jdUtcNoon
+        var foundPrecedingNewMoon = false
+        var sameDayNewMoonJd: Double? = null
+
+        for (k in (kApprox - 2)..(kApprox + 1)) {
+            val nmJd = computeExactPhaseJdUtc(k, 0)
+            if (nmJd <= jdUtcNoon) {
+                if (!foundPrecedingNewMoon || nmJd > latestPrecedingNewMoonJd) {
+                    latestPrecedingNewMoonJd = nmJd
+                    foundPrecedingNewMoon = true
+                }
+            }
+            for (q in 0..3) {
+                val qJd = if (q == 0) nmJd else computeExactPhaseJdUtc(k, q)
+                if (fromJulianDay(qJd) == date) {
+                    exactMajorQuarter = q
+                    matchedLunationK = k
+                    if (q == 0) {
+                        sameDayNewMoonJd = qJd
+                    }
+                }
+            }
         }
 
-        val isExactNew = distToTarget(phaseFraction, 0.0) <= distToTarget(prevFrac, 0.0) &&
-            distToTarget(phaseFraction, 0.0) < distToTarget(nextFrac, 0.0) &&
-            distToTarget(phaseFraction, 0.0) < 0.035
-
-        val isExactFirstQuarter = distToTarget(phaseFraction, 0.25) <= distToTarget(prevFrac, 0.25) &&
-            distToTarget(phaseFraction, 0.25) < distToTarget(nextFrac, 0.25) &&
-            distToTarget(phaseFraction, 0.25) < 0.035
-
-        val isExactFull = distToTarget(phaseFraction, 0.50) <= distToTarget(prevFrac, 0.50) &&
-            distToTarget(phaseFraction, 0.50) < distToTarget(nextFrac, 0.50) &&
-            distToTarget(phaseFraction, 0.50) < 0.035
-
-        val isExactLastQuarter = distToTarget(phaseFraction, 0.75) <= distToTarget(prevFrac, 0.75) &&
-            distToTarget(phaseFraction, 0.75) < distToTarget(nextFrac, 0.75) &&
-            distToTarget(phaseFraction, 0.75) < 0.035
-
-        val phaseType = when {
-            isExactNew -> MoonPhaseType.NEW_MOON
-            isExactFirstQuarter -> MoonPhaseType.FIRST_QUARTER
-            isExactFull -> MoonPhaseType.FULL_MOON
-            isExactLastQuarter -> MoonPhaseType.LAST_QUARTER
-            phaseFraction < 0.03 -> MoonPhaseType.NEW_MOON
-            phaseFraction < 0.22 -> MoonPhaseType.WAXING_CRESCENT
-            phaseFraction < 0.28 -> MoonPhaseType.FIRST_QUARTER
-            phaseFraction < 0.47 -> MoonPhaseType.WAXING_GIBBOUS
-            phaseFraction < 0.53 -> MoonPhaseType.FULL_MOON
-            phaseFraction < 0.72 -> MoonPhaseType.WANING_GIBBOUS
-            phaseFraction < 0.78 -> MoonPhaseType.LAST_QUARTER
-            phaseFraction < 0.97 -> MoonPhaseType.WANING_CRESCENT
-            else -> MoonPhaseType.NEW_MOON
+        val lunarAgeDays = when {
+            sameDayNewMoonJd != null -> (jdUtcNoon - sameDayNewMoonJd).coerceAtLeast(0.0)
+            foundPrecedingNewMoon -> (jdUtcNoon - latestPrecedingNewMoonJd).coerceIn(0.0, 30.0)
+            else -> phaseFraction * SYNODIC_MONTH_DAYS
         }
 
-        val isExactMajor = isExactNew || isExactFirstQuarter || isExactFull || isExactLastQuarter
-        val isSupermoon = (isExactFull || phaseType == MoonPhaseType.FULL_MOON) && distanceKm <= 363500
+        val phaseType = when (exactMajorQuarter) {
+            0 -> MoonPhaseType.NEW_MOON
+            1 -> MoonPhaseType.FIRST_QUARTER
+            2 -> MoonPhaseType.FULL_MOON
+            3 -> MoonPhaseType.LAST_QUARTER
+            else -> when {
+                phaseFraction < 0.03 -> MoonPhaseType.NEW_MOON
+                phaseFraction < 0.22 -> MoonPhaseType.WAXING_CRESCENT
+                phaseFraction < 0.28 -> MoonPhaseType.FIRST_QUARTER
+                phaseFraction < 0.47 -> MoonPhaseType.WAXING_GIBBOUS
+                phaseFraction < 0.53 -> MoonPhaseType.FULL_MOON
+                phaseFraction < 0.72 -> MoonPhaseType.WANING_GIBBOUS
+                phaseFraction < 0.78 -> MoonPhaseType.LAST_QUARTER
+                phaseFraction < 0.97 -> MoonPhaseType.WANING_CRESCENT
+                else -> MoonPhaseType.NEW_MOON
+            }
+        }
 
-        // Estimate local solar-relative moonrise, meridian transit, and moonset
-        // At New Moon (0.0), transit ~12:00, rise ~06:00, set ~18:00; shifts ~50.47 min later per day
-        val eclipticDeclinationFactor = sin(tropFrac * 2.0 * PI) * 0.42 // seasonal day-length modulation in hours
-        val transitHoursRaw = (12.0 + phaseFraction * 24.0) % 24.0
-        val semiDiurnalArc = 6.12 + eclipticDeclinationFactor
-        val riseHoursRaw = ((transitHoursRaw - semiDiurnalArc) % 24.0 + 24.0) % 24.0
-        val setHoursRaw = ((transitHoursRaw + semiDiurnalArc) % 24.0 + 24.0) % 24.0
+        val isExactMajor = exactMajorQuarter != null
+        val isSupermoon = (exactMajorQuarter == 2 || phaseType == MoonPhaseType.FULL_MOON) && distanceKm <= 363500
 
-        fun formatClockHours(hours: Double): String {
-            val totalMinutes = ((hours * 60.0).roundToInt() % (24 * 60) + (24 * 60)) % (24 * 60)
-            val hh = (totalMinutes / 60).coerceIn(0, 23)
-            val mm = (totalMinutes % 60).coerceIn(0, 59)
-            val buf = CharArray(5)
-            buf[0] = ('0'.code + (hh / 10)).toChar()
-            buf[1] = ('0'.code + (hh % 10)).toChar()
-            buf[2] = ':'
-            buf[3] = ('0'.code + (mm / 10)).toChar()
-            buf[4] = ('0'.code + (mm % 10)).toChar()
-            return String(buf)
+        // Check if this exact New/Full Moon day hosts a real Solar or Lunar Eclipse (Meeus Ch. 54)
+        var lunarEclipseKind = LunarEclipseKind.NONE
+        var solarEclipseKind = SolarEclipseKind.NONE
+        if (exactMajorQuarter == 0) {
+            val se = evaluateSolarEclipseAtLunation(matchedLunationK)
+            if (se != null && se.date == date) {
+                solarEclipseKind = se.kind
+            }
+        } else if (exactMajorQuarter == 2) {
+            val le = evaluateLunarEclipseAtLunation(matchedLunationK)
+            if (le != null && le.date == date) {
+                lunarEclipseKind = le.kind
+            }
         }
 
         return LunarDayInfo(
             date = date,
             phaseFraction = phaseFraction,
             illuminationPercent = illumination,
-            lunarAgeDays = lunarAge,
+            lunarAgeDays = lunarAgeDays,
             distanceKm = distanceKm,
+            angularDiameterArcmin = angularDiameterArcmin,
+            eclipticLongitudeDeg = lambdaMoon,
+            eclipticLatitudeDeg = betaMoon,
             zodiacSign = zodiacSign,
+            zodiacDegreeInSign = zodiacDegreeInSign,
             phaseType = phaseType,
             isExactMajorPhaseDay = isExactMajor,
             isSupermoon = isSupermoon,
-            moonriseTime = formatClockHours(riseHoursRaw),
-            moonsetTime = formatClockHours(setHoursRaw),
-            meridianTransitTime = formatClockHours(transitHoursRaw)
+            lunarEclipseKind = lunarEclipseKind,
+            solarEclipseKind = solarEclipseKind
         )
     }
 
     /**
      * Generates a 42-cell (6 weeks, Monday-first) calendar grid for a given year and month (1..12).
-     * Uses pure Julian Day arithmetic without allocating Calendar instances.
      */
     fun getMonthGrid(year: Int, month: Int, today: SimpleDate = today()): List<CalendarDayCell> {
         val leadingDays = getDayOfWeekIndexFromMonday(year, month, 1)
@@ -674,7 +929,7 @@ object LunarAstronomer {
      */
     fun getMonthMajorMilestones(year: Int, month: Int): List<MajorPhaseMilestone> {
         val totalDays = daysInMonth(year, month)
-        val milestones = ArrayList<MajorPhaseMilestone>(4)
+        val milestones = ArrayList<MajorPhaseMilestone>(5)
         for (day in 1..totalDays) {
             val info = getLunarInfo(SimpleDate(year, month, day))
             if (info.isExactMajorPhaseDay) {
@@ -691,219 +946,138 @@ object LunarAstronomer {
     }
 
     /**
-     * Finds the next [count] exact major moon phases starting from [startDate].
+     * Finds the next [count] exact major moon phases starting from [startDate] using Meeus Ch. 49.
      */
     fun getUpcomingMajorPhases(startDate: SimpleDate, count: Int = 4): List<MajorPhaseMilestone> {
-        val result = mutableListOf<MajorPhaseMilestone>()
-        var offset = 0
-        while (result.size < count && offset < 45) {
-            val candidate = addDays(startDate, offset)
-            val info = getLunarInfo(candidate)
-            if (info.isExactMajorPhaseDay) {
-                result.add(
-                    MajorPhaseMilestone(
-                        date = candidate,
-                        phaseType = info.phaseType,
-                        illuminationPercent = info.illuminationPercent.roundToInt()
-                    )
-                )
-            }
-            offset++
-        }
-        return result
-    }
-
-    /**
-     * Finds the next [count] upcoming dates (within 30 days from [startDate]) that match the ideal lunar phases
-     * for a traditional goal (e.g., fast hair growth, thick hair, long-lasting depilation, skin nutrition, etc.).
-     */
-    fun getUpcomingIdealDatesForGoal(
-        startDate: SimpleDate,
-        goal: LunarTraditionalGoal,
-        count: Int = 4
-    ): List<LunarDayInfo> {
-        val matches = mutableListOf<LunarDayInfo>()
-        var lastAddedOffset = -10
-        for (offset in 0..32) {
-            if (matches.size >= count) break
-            val candidate = addDays(startDate, offset)
-            val info = getLunarInfo(candidate)
-            if (info.phaseType in goal.idealPhases) {
-                // Space out consecutive days slightly or prefer major/distinct days so the user gets a useful spread
-                if (offset == 0 || info.isExactMajorPhaseDay || (offset - lastAddedOffset) >= 2) {
-                    matches.add(info)
-                    lastAddedOffset = offset
-                }
-            }
-        }
-        return matches
-    }
-
-    private val KNOWN_ECLIPSES: List<CelestialEvent> = listOf(
-        CelestialEvent(
-            date = SimpleDate(2026, 2, 17),
-            kind = CelestialEventKind.SOLAR_ECLIPSE,
-            title = "Eclipse Solar Anular",
-            subtitle = "Anillo de fuego en el novilunio austral",
-            visibilityRegion = "Antártida, Cono Sur y Sur de África",
-            phaseType = MoonPhaseType.NEW_MOON
-        ),
-        CelestialEvent(
-            date = SimpleDate(2026, 3, 3),
-            kind = CelestialEventKind.LUNAR_ECLIPSE,
-            title = "Eclipse Total de Luna (Luna de Sangre)",
-            subtitle = "Inmersión total en la umbra terrestre",
-            visibilityRegion = "América, Pacífico y Asia Oriental",
-            phaseType = MoonPhaseType.FULL_MOON
-        ),
-        CelestialEvent(
-            date = SimpleDate(2026, 8, 12),
-            kind = CelestialEventKind.SOLAR_ECLIPSE,
-            title = "Eclipse Solar Total",
-            subtitle = "Corona solar visible a pleno día",
-            visibilityRegion = "España, Islandia, Atlántico Norte y Europa",
-            phaseType = MoonPhaseType.NEW_MOON
-        ),
-        CelestialEvent(
-            date = SimpleDate(2026, 8, 28),
-            kind = CelestialEventKind.LUNAR_ECLIPSE,
-            title = "Eclipse Parcial Profundo de Luna",
-            subtitle = "93% del disco lunar cubierto por la umbra",
-            visibilityRegion = "América, Europa y África",
-            phaseType = MoonPhaseType.FULL_MOON
-        ),
-        CelestialEvent(
-            date = SimpleDate(2027, 2, 6),
-            kind = CelestialEventKind.SOLAR_ECLIPSE,
-            title = "Eclipse Solar Anular",
-            subtitle = "Alineación Sol-Luna en apogeo relativo",
-            visibilityRegion = "Chile, Argentina, Uruguay y Atlántico Sur",
-            phaseType = MoonPhaseType.NEW_MOON
-        ),
-        CelestialEvent(
-            date = SimpleDate(2027, 2, 20),
-            kind = CelestialEventKind.LUNAR_ECLIPSE,
-            title = "Eclipse Lunar Penumbral",
-            subtitle = "Sombra sutil sobre el limbo lunar",
-            visibilityRegion = "América, Europa, África y Asia",
-            phaseType = MoonPhaseType.FULL_MOON
-        ),
-        CelestialEvent(
-            date = SimpleDate(2027, 8, 2),
-            kind = CelestialEventKind.SOLAR_ECLIPSE,
-            title = "Gran Eclipse Solar Total del Siglo",
-            subtitle = "Más de 6 minutos de totalidad solar",
-            visibilityRegion = "Sur de España, Norte de África y Medio Oriente",
-            phaseType = MoonPhaseType.NEW_MOON
-        ),
-        CelestialEvent(
-            date = SimpleDate(2028, 1, 12),
-            kind = CelestialEventKind.LUNAR_ECLIPSE,
-            title = "Eclipse Parcial de Luna",
-            subtitle = "Mordisco umbral en el limbo norte lunar",
-            visibilityRegion = "América, Europa y África Occidental",
-            phaseType = MoonPhaseType.FULL_MOON
-        ),
-        CelestialEvent(
-            date = SimpleDate(2028, 1, 26),
-            kind = CelestialEventKind.SOLAR_ECLIPSE,
-            title = "Eclipse Solar Anular",
-            subtitle = "Larga franja anular ecuatorial",
-            visibilityRegion = "Ecuador, Perú, Brasil, Colombia y España",
-            phaseType = MoonPhaseType.NEW_MOON
-        ),
-        CelestialEvent(
-            date = SimpleDate(2028, 12, 31),
-            kind = CelestialEventKind.LUNAR_ECLIPSE,
-            title = "Eclipse Total de Luna de Fin de Año",
-            subtitle = "Plenilunio rojizo en víspera de Año Nuevo",
-            visibilityRegion = "Europa, África, Asia y Oceanía",
-            phaseType = MoonPhaseType.FULL_MOON
-        ),
-        CelestialEvent(
-            date = SimpleDate(2029, 6, 26),
-            kind = CelestialEventKind.LUNAR_ECLIPSE,
-            title = "Eclipse Total de Luna Central",
-            subtitle = "Más de 100 minutos de totalidad umbral",
-            visibilityRegion = "América del Norte, Centroamérica, Sudamérica y Europa",
-            phaseType = MoonPhaseType.FULL_MOON
-        ),
-        CelestialEvent(
-            date = SimpleDate(2029, 12, 20),
-            kind = CelestialEventKind.LUNAR_ECLIPSE,
-            title = "Eclipse Total de Luna Invernal",
-            subtitle = "Luna roja de solsticio",
-            visibilityRegion = "América, Europa, África y Medio Oriente",
-            phaseType = MoonPhaseType.FULL_MOON
-        )
-    )
-
-    /**
-     * Computes upcoming Supermoons (Full Moon near Perigee <= 363,500 km) and Lunar/Solar Eclipses
-     * starting from [startDate], sorted chronologically.
-     * Steps directly from synodic Full Moon to Full Moon (~29.53 days) instead of scanning 400+ days linearly.
-     */
-    fun getUpcomingCelestialEvents(startDate: SimpleDate, count: Int = 6): List<CelestialEvent> {
-        val supermoons = ArrayList<CelestialEvent>(4)
         val startJd = toJulianDay(startDate.year, startDate.month, startDate.day)
-        val startPhase = rawPhaseFractionForJd(startJd)
-        val daysToFirstFull = if (startPhase <= 0.5) {
-            (0.5 - startPhase) * SYNODIC_MONTH_DAYS
-        } else {
-            (1.5 - startPhase) * SYNODIC_MONTH_DAYS
-        }
+        val kStart = floor((startJd - MEEUS_EPOCH_NEW_MOON_JDE) / SYNODIC_MONTH_DAYS).toInt() - 1
+        val candidates = ArrayList<MajorPhaseMilestone>(count + 4)
 
-        for (lunation in 0..14) {
-            val approxFullJd = startJd + daysToFirstFull + lunation * SYNODIC_MONTH_DAYS
-            for (delta in -2..2) {
-                val candidate = fromJulianDay(approxFullJd + delta)
-                if (candidate < startDate) continue
-                val info = getLunarInfo(candidate)
-                if (info.isExactMajorPhaseDay &&
-                    info.phaseType == MoonPhaseType.FULL_MOON &&
-                    info.distanceKm <= 363500 &&
-                    supermoons.none { it.date == candidate }
-                ) {
-                    supermoons.add(
-                        CelestialEvent(
-                            date = candidate,
-                            kind = CelestialEventKind.SUPERMOON,
-                            title = "Superluna de Perigeo",
-                            subtitle = "Distancia mínima: ${info.distanceKm} km (+14% brillo aparente)",
-                            visibilityRegion = "Visible globalmente toda la noche",
-                            phaseType = MoonPhaseType.FULL_MOON
+        for (k in kStart..(kStart + (count / 4) + 2)) {
+            for (q in 0..3) {
+                val phaseDate = fromJulianDay(computeExactPhaseJdUtc(k, q))
+                if (phaseDate >= startDate) {
+                    val info = getLunarInfo(phaseDate)
+                    val phaseType = when (q) {
+                        0 -> MoonPhaseType.NEW_MOON
+                        1 -> MoonPhaseType.FIRST_QUARTER
+                        2 -> MoonPhaseType.FULL_MOON
+                        else -> MoonPhaseType.LAST_QUARTER
+                    }
+                    candidates.add(
+                        MajorPhaseMilestone(
+                            date = phaseDate,
+                            phaseType = phaseType,
+                            illuminationPercent = info.illuminationPercent.roundToInt()
                         )
                     )
-                    break
                 }
             }
-            if (supermoons.size >= 4) break
         }
 
-        val futureEclipsesByDate = KNOWN_ECLIPSES
-            .filter { it.date >= startDate }
-            .associateBy { it.date.toPackedKey() }
-            .toMutableMap()
-
-        val standaloneSupermoons = ArrayList<CelestialEvent>(4)
-        for (sm in supermoons) {
-            val packedDate = sm.date.toPackedKey()
-            val coincidingEclipse = futureEclipsesByDate[packedDate]
-            if (coincidingEclipse != null) {
-                val distKm = getLunarInfo(sm.date).distanceKm
-                futureEclipsesByDate[packedDate] = coincidingEclipse.copy(
-                    subtitle = "${coincidingEclipse.subtitle} • Superluna ($distKm km)"
-                )
-            } else {
-                standaloneSupermoons.add(sm)
-            }
-        }
-
-        return (standaloneSupermoons + futureEclipsesByDate.values)
+        return candidates
             .sortedBy { it.date }
             .distinctBy { it.date.toPackedKey() }
             .take(count)
     }
+
+    /**
+     * Dynamically computes upcoming Supermoons (Full Moon near Perigee <= 363,500 km) and
+     * Solar/Lunar Eclipses (Meeus Ch. 54) starting from [startDate] for ANY year or century.
+     */
+    fun getUpcomingCelestialEvents(startDate: SimpleDate, count: Int = 6): List<CelestialEvent> {
+        val startJd = toJulianDay(startDate.year, startDate.month, startDate.day)
+        val kStart = floor((startJd - MEEUS_EPOCH_NEW_MOON_JDE) / SYNODIC_MONTH_DAYS).toInt() - 1
+        // Scan ~36 lunations (~3 years ahead) to collect upcoming eclipses & supermoons for any epoch
+        val eventsByDate = LinkedHashMap<Int, CelestialEvent>()
+
+        for (k in kStart..(kStart + 36)) {
+            // 1. Check Solar Eclipse at New Moon (k)
+            val solarEclipse = evaluateSolarEclipseAtLunation(k)
+            if (solarEclipse != null && solarEclipse.date >= startDate) {
+                val (title, subtitle) = when (solarEclipse.kind) {
+                    SolarEclipseKind.TOTAL ->
+                        "Eclipse Solar Total" to "Totalidad umbral sobre la superficie terrestre"
+                    SolarEclipseKind.ANNULAR ->
+                        "Eclipse Solar Anular" to "Anillo solar en apogeo relativo lunar"
+                    SolarEclipseKind.HYBRID ->
+                        "Eclipse Solar Híbrido" to "Transición anular-total a lo largo de la franja central"
+                    SolarEclipseKind.PARTIAL -> {
+                        val pct = (solarEclipse.partialMagnitude * 100.0).roundToInt().coerceIn(1, 99)
+                        "Eclipse Solar Parcial" to "Ocultación solar máxima del $pct% en penumbra"
+                    }
+                    SolarEclipseKind.NONE -> "" to ""
+                }
+                if (title.isNotEmpty()) {
+                    eventsByDate[solarEclipse.date.toPackedKey()] = CelestialEvent(
+                        date = solarEclipse.date,
+                        kind = CelestialEventKind.SOLAR_ECLIPSE,
+                        title = title,
+                        subtitle = subtitle,
+                        visibilityRegion = describeSolarEclipseVisibility(solarEclipse.jdMaxUtc, solarEclipse.gamma),
+                        phaseType = MoonPhaseType.NEW_MOON
+                    )
+                }
+            }
+
+            // 2. Check Full Moon (k + 0.5): Lunar Eclipse and/or Perigee Supermoon
+            val fullMoonDate = fromJulianDay(computeExactPhaseJdUtc(k, 2))
+            if (fullMoonDate >= startDate) {
+                val fullInfo = getLunarInfo(fullMoonDate)
+                val isSupermoon = fullInfo.distanceKm <= 363500
+                val lunarEclipse = evaluateLunarEclipseAtLunation(k)
+
+                if (lunarEclipse != null && lunarEclipse.date >= startDate) {
+                    val baseTitle = when (lunarEclipse.kind) {
+                        LunarEclipseKind.TOTAL -> "Eclipse Total de Luna"
+                        LunarEclipseKind.PARTIAL -> "Eclipse Parcial de Luna"
+                        LunarEclipseKind.PENUMBRAL -> "Eclipse Lunar Penumbral"
+                        LunarEclipseKind.NONE -> ""
+                    }
+                    val baseSubtitle = when (lunarEclipse.kind) {
+                        LunarEclipseKind.TOTAL ->
+                            "Inmersión total en la umbra terrestre (mag. ${"%.2f".format(Locale.US, lunarEclipse.umbralMagnitude)})"
+                        LunarEclipseKind.PARTIAL -> {
+                            val pct = (lunarEclipse.umbralMagnitude * 100.0).roundToInt().coerceIn(1, 99)
+                            "$pct% del diámetro lunar cubierto por la umbra"
+                        }
+                        LunarEclipseKind.PENUMBRAL -> {
+                            val pct = (lunarEclipse.penumbralMagnitude * 100.0).roundToInt().coerceIn(1, 100)
+                            "Paso por la penumbra terrestre ($pct% mag. penumbral)"
+                        }
+                        LunarEclipseKind.NONE -> ""
+                    }
+                    val mergedSubtitle = if (isSupermoon) {
+                        "$baseSubtitle • Superluna (${fullInfo.distanceKm} km)"
+                    } else {
+                        baseSubtitle
+                    }
+                    eventsByDate[lunarEclipse.date.toPackedKey()] = CelestialEvent(
+                        date = lunarEclipse.date,
+                        kind = CelestialEventKind.LUNAR_ECLIPSE,
+                        title = baseTitle,
+                        subtitle = mergedSubtitle,
+                        visibilityRegion = describeLunarEclipseVisibility(lunarEclipse.jdMaxUtc),
+                        phaseType = MoonPhaseType.FULL_MOON
+                    )
+                } else if (isSupermoon) {
+                    val packed = fullMoonDate.toPackedKey()
+                    if (!eventsByDate.containsKey(packed)) {
+                        eventsByDate[packed] = CelestialEvent(
+                            date = fullMoonDate,
+                            kind = CelestialEventKind.SUPERMOON,
+                            title = "Superluna de Perigeo",
+                            subtitle = "Distancia geocéntrica: ${fullInfo.distanceKm} km • Ø ${"%.1f".format(Locale.US, fullInfo.angularDiameterArcmin)}′",
+                            visibilityRegion = "Visible globalmente durante toda la noche",
+                            phaseType = MoonPhaseType.FULL_MOON
+                        )
+                    }
+                }
+            }
+        }
+
+        return eventsByDate.values
+            .sortedBy { it.date }
+            .take(count)
+    }
 }
-
-

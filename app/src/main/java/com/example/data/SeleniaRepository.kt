@@ -7,23 +7,35 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.domain.CalculationRecord
-import com.example.domain.LunarAstronomer
-import com.example.domain.MoonPhaseType
 import com.example.domain.SimpleDate
 import com.example.ui.CalendarNote
+import com.example.ui.StopwatchLap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.IOException
 
 private val Context.seleniaDataStore: DataStore<Preferences> by preferencesDataStore(
     name = "selenia_user_preferences"
+)
+
+@Immutable
+data class BackupImportSummary(
+    val notesImported: Int,
+    val calculationsImported: Int,
+    val worldCitiesCount: Int
 )
 
 @Immutable
@@ -32,20 +44,20 @@ data class SeleniaPersistedSettings(
     val is24HourFormat: Boolean = true,
     val isRadiansMode: Boolean = false,
     val lunarAlertsEnabled: Boolean = false,
-    val selectedWorldCityIds: List<String> = DEFAULT_WORLD_CITY_IDS
+    val selectedWorldCityIds: List<String> = DEFAULT_WORLD_CITY_IDS,
+    val watchDialPresetName: String = DEFAULT_WATCH_DIAL_PRESET,
+    val stopwatchRunning: Boolean = false,
+    val stopwatchAccumulatedMs: Long = 0L,
+    val stopwatchStartWallEpochMs: Long = 0L,
+    val stopwatchLaps: List<StopwatchLap> = emptyList(),
+    val timerTotalSeconds: Int = 300,
+    val timerRunning: Boolean = false,
+    val timerRemainingPausedMs: Long = 300_000L,
+    val timerEndWallEpochMs: Long = 0L
 ) {
     companion object {
-        val DEFAULT_WORLD_CITY_IDS: List<String> by lazy(LazyThreadSafetyMode.PUBLICATION) {
-            val localId = java.util.TimeZone.getDefault().id
-            listOf(
-                "Europe/Madrid",
-                "America/Mexico_City",
-                "America/Bogota",
-                "America/Argentina/Buenos_Aires",
-                "America/New_York",
-                "Asia/Tokyo"
-            ).filter { it != localId }
-        }
+        val DEFAULT_WORLD_CITY_IDS: List<String> = emptyList()
+        const val DEFAULT_WATCH_DIAL_PRESET: String = "SAPPHIRE_ASTRAL"
     }
 }
 
@@ -56,12 +68,22 @@ class SeleniaRepository(
     private val appContext: Context = context.applicationContext
 
     private object Keys {
-        val INITIAL_SEED_DONE = booleanPreferencesKey("initial_seed_done_v1")
         val IS_NORTHERN_HEMISPHERE = booleanPreferencesKey("is_northern_hemisphere")
         val IS_24_HOUR_FORMAT = booleanPreferencesKey("is_24_hour_format")
         val IS_RADIANS_MODE = booleanPreferencesKey("is_radians_mode")
         val LUNAR_ALERTS_ENABLED = booleanPreferencesKey("lunar_alerts_enabled")
-        val SELECTED_WORLD_CITIES = stringPreferencesKey("selected_world_cities")
+        val SELECTED_WORLD_CITIES = stringPreferencesKey("user_added_world_cities_v2")
+        val WATCH_DIAL_PRESET = stringPreferencesKey("watch_dial_preset_v1")
+
+        val STOPWATCH_RUNNING = booleanPreferencesKey("stopwatch_running_v1")
+        val STOPWATCH_ACCUMULATED_MS = longPreferencesKey("stopwatch_accumulated_ms_v1")
+        val STOPWATCH_START_WALL_MS = longPreferencesKey("stopwatch_start_wall_ms_v1")
+        val STOPWATCH_LAPS = stringPreferencesKey("stopwatch_laps_v1")
+
+        val TIMER_TOTAL_SECONDS = intPreferencesKey("timer_total_seconds_v1")
+        val TIMER_RUNNING = booleanPreferencesKey("timer_running_v1")
+        val TIMER_REMAINING_PAUSED_MS = longPreferencesKey("timer_remaining_paused_ms_v1")
+        val TIMER_END_WALL_MS = longPreferencesKey("timer_end_wall_ms_v1")
     }
 
     val notesByDateFlow: Flow<Map<String, List<CalendarNote>>> = dao.observeAllNotes()
@@ -72,7 +94,9 @@ class SeleniaRepository(
                     date = SimpleDate(entity.year, entity.month, entity.day),
                     title = entity.title,
                     category = entity.category,
-                    reminderEnabled = entity.reminderEnabled
+                    reminderEnabled = entity.reminderEnabled,
+                    reminderHour = entity.reminderHour.coerceIn(0, 23),
+                    reminderMinute = entity.reminderMinute.coerceIn(0, 59)
                 )
             }.groupBy { it.date.storageKey }
         }
@@ -102,81 +126,52 @@ class SeleniaRepository(
             }
         }
         .map { prefs ->
+            val isNorthern = prefs[Keys.IS_NORTHERN_HEMISPHERE] ?: true
+            syncWidgetHemispherePref(appContext, isNorthern)
+
             val citiesCsv = prefs[Keys.SELECTED_WORLD_CITIES]
             val parsedCities = if (citiesCsv.isNullOrBlank()) {
-                SeleniaPersistedSettings.DEFAULT_WORLD_CITY_IDS
+                emptyList()
             } else {
                 citiesCsv.split("|").filter { it.isNotBlank() }.distinct()
             }
+            val totalTimerSec = (prefs[Keys.TIMER_TOTAL_SECONDS] ?: 300)
+                .coerceIn(MIN_TIMER_SECONDS, MAX_TIMER_SECONDS)
             SeleniaPersistedSettings(
-                isNorthernHemisphere = prefs[Keys.IS_NORTHERN_HEMISPHERE] ?: true,
+                isNorthernHemisphere = isNorthern,
                 is24HourFormat = prefs[Keys.IS_24_HOUR_FORMAT] ?: true,
                 isRadiansMode = prefs[Keys.IS_RADIANS_MODE] ?: false,
                 lunarAlertsEnabled = prefs[Keys.LUNAR_ALERTS_ENABLED] ?: false,
-                selectedWorldCityIds = parsedCities.ifEmpty { SeleniaPersistedSettings.DEFAULT_WORLD_CITY_IDS }
+                selectedWorldCityIds = parsedCities,
+                watchDialPresetName = prefs[Keys.WATCH_DIAL_PRESET]
+                    ?: SeleniaPersistedSettings.DEFAULT_WATCH_DIAL_PRESET,
+                stopwatchRunning = prefs[Keys.STOPWATCH_RUNNING] ?: false,
+                stopwatchAccumulatedMs = prefs[Keys.STOPWATCH_ACCUMULATED_MS] ?: 0L,
+                stopwatchStartWallEpochMs = prefs[Keys.STOPWATCH_START_WALL_MS] ?: 0L,
+                stopwatchLaps = decodeStopwatchLaps(prefs[Keys.STOPWATCH_LAPS]),
+                timerTotalSeconds = totalTimerSec,
+                timerRunning = prefs[Keys.TIMER_RUNNING] ?: false,
+                timerRemainingPausedMs = prefs[Keys.TIMER_REMAINING_PAUSED_MS] ?: (totalTimerSec * 1000L),
+                timerEndWallEpochMs = prefs[Keys.TIMER_END_WALL_MS] ?: 0L
             )
         }
         .distinctUntilChanged()
         .flowOn(Dispatchers.Default)
 
-    suspend fun ensureSeeded() {
-        var alreadySeeded = false
-        appContext.seleniaDataStore.edit { prefs ->
-            alreadySeeded = prefs[Keys.INITIAL_SEED_DONE] == true
-            if (!alreadySeeded) {
-                prefs[Keys.INITIAL_SEED_DONE] = true
-            }
-        }
-        if (alreadySeeded) return
+    suspend fun getPersistedSettingsSnapshot(): SeleniaPersistedSettings {
+        return settingsFlow.first()
+    }
 
-        if (dao.countNotes() == 0) {
-            val today = LunarAstronomer.today()
-            val upcoming = LunarAstronomer.getUpcomingMajorPhases(today, count = 4)
-            upcoming.firstOrNull { it.phaseType == MoonPhaseType.FULL_MOON }?.let { fullMoon ->
-                dao.insertNote(
-                    CalendarNoteEntity(
-                        dateKey = fullMoon.date.storageKey,
-                        year = fullMoon.date.year,
-                        month = fullMoon.date.month,
-                        day = fullMoon.date.day,
-                        title = "Observación de Plenilunio (100% iluminada)",
-                        category = "Astronomía",
-                        reminderEnabled = false
-                    )
-                )
-            }
-            upcoming.firstOrNull { it.phaseType == MoonPhaseType.NEW_MOON }?.let { newMoon ->
-                dao.insertNote(
-                    CalendarNoteEntity(
-                        dateKey = newMoon.date.storageKey,
-                        year = newMoon.date.year,
-                        month = newMoon.date.month,
-                        day = newMoon.date.day,
-                        title = "Noche sin luna: ideal para cielo profundo",
-                        category = "Astronomía",
-                        reminderEnabled = false
-                    )
-                )
-            }
-        }
-
-        if (dao.countHistory() == 0) {
-            val now = System.currentTimeMillis()
-            dao.insertHistoryRecord(
-                CalculationHistoryEntity(
-                    expression = "365.2422 − (12 × 29.5306)",
-                    result = "10.875",
-                    badgeLabel = "Epacta anual (días)",
-                    createdAt = now - 1000L
-                )
-            )
-            dao.insertHistoryRecord(
-                CalculationHistoryEntity(
-                    expression = "12 × 29.5306",
-                    result = "354.3672",
-                    badgeLabel = "Año Lunar (12 lunas)",
-                    createdAt = now
-                )
+    suspend fun getReminderNotes(): List<CalendarNote> {
+        return dao.getNotesWithReminders().map { entity ->
+            CalendarNote(
+                id = entity.id,
+                date = SimpleDate(entity.year, entity.month, entity.day),
+                title = entity.title,
+                category = entity.category,
+                reminderEnabled = entity.reminderEnabled,
+                reminderHour = entity.reminderHour.coerceIn(0, 23),
+                reminderMinute = entity.reminderMinute.coerceIn(0, 59)
             )
         }
     }
@@ -185,7 +180,9 @@ class SeleniaRepository(
         date: SimpleDate,
         title: String,
         category: String,
-        reminderEnabled: Boolean
+        reminderEnabled: Boolean,
+        reminderHour: Int = 9,
+        reminderMinute: Int = 0
     ): Long {
         return dao.insertNote(
             CalendarNoteEntity(
@@ -195,8 +192,28 @@ class SeleniaRepository(
                 day = date.day,
                 title = title.take(240),
                 category = category.take(48),
-                reminderEnabled = reminderEnabled
+                reminderEnabled = reminderEnabled,
+                reminderHour = reminderHour.coerceIn(0, 23),
+                reminderMinute = reminderMinute.coerceIn(0, 59)
             )
+        )
+    }
+
+    suspend fun updateNote(
+        noteId: Long,
+        title: String,
+        category: String,
+        reminderEnabled: Boolean,
+        reminderHour: Int,
+        reminderMinute: Int
+    ) {
+        dao.updateNoteFields(
+            noteId = noteId,
+            title = title.take(240),
+            category = category.take(48),
+            reminderEnabled = reminderEnabled,
+            reminderHour = reminderHour.coerceIn(0, 23),
+            reminderMinute = reminderMinute.coerceIn(0, 59)
         )
     }
 
@@ -219,6 +236,7 @@ class SeleniaRepository(
     }
 
     suspend fun setNorthernHemisphere(isNorthern: Boolean) {
+        syncWidgetHemispherePref(appContext, isNorthern)
         appContext.seleniaDataStore.edit { it[Keys.IS_NORTHERN_HEMISPHERE] = isNorthern }
     }
 
@@ -240,7 +258,267 @@ class SeleniaRepository(
         }
     }
 
+    suspend fun setWatchDialPresetName(presetName: String) {
+        appContext.seleniaDataStore.edit {
+            it[Keys.WATCH_DIAL_PRESET] = presetName
+        }
+    }
+
+    suspend fun saveStopwatchSnapshot(
+        running: Boolean,
+        accumulatedMs: Long,
+        startWallEpochMs: Long,
+        laps: List<StopwatchLap>
+    ) {
+        val encodedLaps = encodeStopwatchLaps(laps)
+        appContext.seleniaDataStore.edit { prefs ->
+            prefs[Keys.STOPWATCH_RUNNING] = running
+            prefs[Keys.STOPWATCH_ACCUMULATED_MS] = accumulatedMs.coerceAtLeast(0L)
+            prefs[Keys.STOPWATCH_START_WALL_MS] = startWallEpochMs.coerceAtLeast(0L)
+            prefs[Keys.STOPWATCH_LAPS] = encodedLaps
+        }
+    }
+
+    suspend fun saveTimerSnapshot(
+        totalSeconds: Int,
+        running: Boolean,
+        remainingPausedMs: Long,
+        endWallEpochMs: Long
+    ) {
+        appContext.seleniaDataStore.edit { prefs ->
+            prefs[Keys.TIMER_TOTAL_SECONDS] = totalSeconds.coerceIn(MIN_TIMER_SECONDS, MAX_TIMER_SECONDS)
+            prefs[Keys.TIMER_RUNNING] = running
+            prefs[Keys.TIMER_REMAINING_PAUSED_MS] = remainingPausedMs.coerceAtLeast(0L)
+            prefs[Keys.TIMER_END_WALL_MS] = endWallEpochMs.coerceAtLeast(0L)
+        }
+    }
+
+    /**
+     * Exports all user-created notes, calculator history, world cities, and settings
+     * into a portable offline JSON string (Storage Access Framework compatible, 0 permissions).
+     */
+    suspend fun exportBackupJson(): String = withContext(Dispatchers.IO) {
+        val settings = getPersistedSettingsSnapshot()
+        val notes = dao.getAllNotesSnapshot()
+        val history = dao.getAllHistorySnapshot()
+
+        val settingsObj = JSONObject().apply {
+            put("isNorthernHemisphere", settings.isNorthernHemisphere)
+            put("is24HourFormat", settings.is24HourFormat)
+            put("isRadiansMode", settings.isRadiansMode)
+            put("lunarAlertsEnabled", settings.lunarAlertsEnabled)
+            put("watchDialPresetName", settings.watchDialPresetName)
+            put("timerTotalSeconds", settings.timerTotalSeconds)
+            put("worldCityIds", JSONArray(settings.selectedWorldCityIds))
+        }
+
+        val notesArray = JSONArray()
+        for (n in notes) {
+            notesArray.put(
+                JSONObject().apply {
+                    put("year", n.year)
+                    put("month", n.month)
+                    put("day", n.day)
+                    put("title", n.title)
+                    put("category", n.category)
+                    put("reminderEnabled", n.reminderEnabled)
+                    put("reminderHour", n.reminderHour)
+                    put("reminderMinute", n.reminderMinute)
+                    put("createdAt", n.createdAt)
+                }
+            )
+        }
+
+        val historyArray = JSONArray()
+        for (h in history) {
+            historyArray.put(
+                JSONObject().apply {
+                    put("expression", h.expression)
+                    put("result", h.result)
+                    if (!h.badgeLabel.isNullOrBlank()) {
+                        put("badgeLabel", h.badgeLabel)
+                    }
+                    put("createdAt", h.createdAt)
+                }
+            )
+        }
+
+        JSONObject().apply {
+            put("app", "TodUno")
+            put("backupFormatVersion", 1)
+            put("exportedAtEpochMs", System.currentTimeMillis())
+            put("settings", settingsObj)
+            put("notes", notesArray)
+            put("calculationHistory", historyArray)
+        }.toString(2).replace("\\/", "/")
+    }
+
+    /**
+     * Restores settings, world cities, notes (deduplicated per date/title/category), and
+     * calculation history from an offline JSON backup produced by [exportBackupJson].
+     */
+    suspend fun importBackupJson(jsonText: String): BackupImportSummary = withContext(Dispatchers.IO) {
+        val root = JSONObject(jsonText.trim())
+        val currentSettings = getPersistedSettingsSnapshot()
+        var mergedWorldCities = currentSettings.selectedWorldCityIds
+
+        val settingsObj = root.optJSONObject("settings")
+        if (settingsObj != null) {
+            val isNorthern = settingsObj.optBoolean("isNorthernHemisphere", currentSettings.isNorthernHemisphere)
+            val is24h = settingsObj.optBoolean("is24HourFormat", currentSettings.is24HourFormat)
+            val isRad = settingsObj.optBoolean("isRadiansMode", currentSettings.isRadiansMode)
+            val lunarAlerts = settingsObj.optBoolean("lunarAlertsEnabled", currentSettings.lunarAlertsEnabled)
+            val preset = settingsObj.optString("watchDialPresetName", currentSettings.watchDialPresetName)
+                .ifBlank { currentSettings.watchDialPresetName }
+            val timerSec = settingsObj.optInt("timerTotalSeconds", currentSettings.timerTotalSeconds)
+                .coerceIn(MIN_TIMER_SECONDS, MAX_TIMER_SECONDS)
+
+            val citiesArr = settingsObj.optJSONArray("worldCityIds")
+            if (citiesArr != null) {
+                val importedCities = buildList {
+                    for (i in 0 until citiesArr.length()) {
+                        val id = citiesArr.optString(i, "").trim()
+                        if (id.isNotBlank()) add(id)
+                    }
+                }
+                mergedWorldCities = (currentSettings.selectedWorldCityIds + importedCities).distinct()
+            }
+
+            syncWidgetHemispherePref(appContext, isNorthern)
+            appContext.seleniaDataStore.edit { prefs ->
+                prefs[Keys.IS_NORTHERN_HEMISPHERE] = isNorthern
+                prefs[Keys.IS_24_HOUR_FORMAT] = is24h
+                prefs[Keys.IS_RADIANS_MODE] = isRad
+                prefs[Keys.LUNAR_ALERTS_ENABLED] = lunarAlerts
+                prefs[Keys.WATCH_DIAL_PRESET] = preset
+                prefs[Keys.SELECTED_WORLD_CITIES] = mergedWorldCities.joinToString("|")
+                if (!(prefs[Keys.TIMER_RUNNING] ?: false)) {
+                    prefs[Keys.TIMER_TOTAL_SECONDS] = timerSec
+                    prefs[Keys.TIMER_REMAINING_PAUSED_MS] = timerSec * 1000L
+                }
+            }
+        }
+
+        val existingNoteSignatures = dao.getAllNotesSnapshot()
+            .mapTo(HashSet()) { "${it.dateKey}|${it.title.lowercase()}|${it.category.lowercase()}" }
+
+        var notesAdded = 0
+        val notesArr = root.optJSONArray("notes")
+        if (notesArr != null) {
+            for (i in 0 until notesArr.length()) {
+                val obj = notesArr.optJSONObject(i) ?: continue
+                val year = obj.optInt("year", 0)
+                val month = obj.optInt("month", 0)
+                val day = obj.optInt("day", 0)
+                val title = obj.optString("title", "").trim().take(240)
+                if (year !in 1900..2150 || month !in 1..12 || day !in 1..31 || title.isEmpty()) continue
+                val category = obj.optString("category", "Personal").trim().ifBlank { "Personal" }.take(48)
+                val date = SimpleDate(year, month, day)
+                val sig = "${date.storageKey}|${title.lowercase()}|${category.lowercase()}"
+                if (existingNoteSignatures.add(sig)) {
+                    dao.insertNote(
+                        CalendarNoteEntity(
+                            dateKey = date.storageKey,
+                            year = year,
+                            month = month,
+                            day = day,
+                            title = title,
+                            category = category,
+                            reminderEnabled = obj.optBoolean("reminderEnabled", false),
+                            reminderHour = obj.optInt("reminderHour", 9).coerceIn(0, 23),
+                            reminderMinute = obj.optInt("reminderMinute", 0).coerceIn(0, 59),
+                            createdAt = obj.optLong("createdAt", System.currentTimeMillis())
+                        )
+                    )
+                    notesAdded++
+                }
+            }
+        }
+
+        val existingHistorySignatures = dao.getAllHistorySnapshot()
+            .mapTo(HashSet()) { "${it.expression}|${it.result}" }
+
+        var historyAdded = 0
+        val histArr = root.optJSONArray("calculationHistory")
+        if (histArr != null) {
+            // Insert oldest-first so newest stays at top if timestamps aren't provided
+            for (i in (histArr.length() - 1) downTo 0) {
+                val obj = histArr.optJSONObject(i) ?: continue
+                val expr = obj.optString("expression", "").trim().take(256)
+                val res = obj.optString("result", "").trim().take(64)
+                if (expr.isEmpty() || res.isEmpty()) continue
+                val sig = "$expr|$res"
+                if (existingHistorySignatures.add(sig)) {
+                    val badge = obj.optString("badgeLabel", "").trim().takeIf { it.isNotEmpty() }?.take(64)
+                    dao.insertHistoryRecord(
+                        CalculationHistoryEntity(
+                            expression = expr,
+                            result = res,
+                            badgeLabel = badge,
+                            createdAt = obj.optLong("createdAt", System.currentTimeMillis())
+                        )
+                    )
+                    historyAdded++
+                }
+            }
+            if (historyAdded > 0) {
+                dao.pruneOldHistoryRecords(keepLimit = 50)
+            }
+        }
+
+        BackupImportSummary(
+            notesImported = notesAdded,
+            calculationsImported = historyAdded,
+            worldCitiesCount = mergedWorldCities.size
+        )
+    }
+
     companion object {
+        const val MIN_TIMER_SECONDS = 1
+        const val MAX_TIMER_SECONDS = 86_399 // 23h 59m 59s
+
+        private const val WIDGET_SYNC_PREFS = "selenia_widget_sync_prefs"
+        private const val KEY_WIDGET_NORTHERN_HEMISPHERE = "is_northern_hemisphere"
+
+        fun readWidgetNorthernHemisphere(context: Context): Boolean {
+            return runCatching {
+                context.applicationContext
+                    .getSharedPreferences(WIDGET_SYNC_PREFS, Context.MODE_PRIVATE)
+                    .getBoolean(KEY_WIDGET_NORTHERN_HEMISPHERE, true)
+            }.getOrDefault(true)
+        }
+
+        fun syncWidgetHemispherePref(context: Context, isNorthern: Boolean) {
+            runCatching {
+                val sp = context.applicationContext
+                    .getSharedPreferences(WIDGET_SYNC_PREFS, Context.MODE_PRIVATE)
+                if (!sp.contains(KEY_WIDGET_NORTHERN_HEMISPHERE) ||
+                    sp.getBoolean(KEY_WIDGET_NORTHERN_HEMISPHERE, true) != isNorthern
+                ) {
+                    sp.edit().putBoolean(KEY_WIDGET_NORTHERN_HEMISPHERE, isNorthern).apply()
+                }
+            }
+        }
+
+        internal fun encodeStopwatchLaps(laps: List<StopwatchLap>): String {
+            if (laps.isEmpty()) return ""
+            return laps.take(200).joinToString(";") { lap ->
+                "${lap.lapNumber},${lap.lapDurationMs},${lap.totalElapsedMs}"
+            }
+        }
+
+        internal fun decodeStopwatchLaps(encoded: String?): List<StopwatchLap> {
+            if (encoded.isNullOrBlank()) return emptyList()
+            return encoded.split(";").mapNotNull { entry ->
+                val parts = entry.split(",")
+                if (parts.size != 3) return@mapNotNull null
+                val num = parts[0].toIntOrNull() ?: return@mapNotNull null
+                val dur = parts[1].toLongOrNull() ?: return@mapNotNull null
+                val tot = parts[2].toLongOrNull() ?: return@mapNotNull null
+                StopwatchLap(lapNumber = num, lapDurationMs = dur, totalElapsedMs = tot)
+            }
+        }
+
         @Volatile
         private var INSTANCE: SeleniaRepository? = null
 

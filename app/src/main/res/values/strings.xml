@@ -12,16 +12,22 @@
     <string name="today_button">Hoy</string>
     <string name="prev_month_desc">Mes anterior</string>
     <string name="next_month_desc">Mes siguiente</string>
-    <string name="selected_day_details">Detalles del Día</string>
     <string name="lunar_illumination_label">Iluminación</string>
     <string name="lunar_age_label">Edad lunar</string>
     <string name="days_unit">días</string>
-    <string name="send_day_to_calc">Usar día en Calculadora</string>
-    <string name="inspect_moon_phase">Ver en Observatorio Lunar</string>
     <string name="month_lunar_milestones">Hitos Lunares del Mes</string>
-    <string name="astronomical_season_note">Desliza para cambiar de mes • Toca el título para saltar de año</string>
-    <string name="month_year_picker_title">Ir a Mes y Año</string>
-    <string name="note_reminder_toggle">Recordatorio 09:00</string>
+    <string name="note_reminder_toggle">Recordatorio</string>
+    <string name="note_reminder_time_dialog_title">Hora del recordatorio</string>
+    <string name="edit_note_desc">Editar nota</string>
+    <string name="delete_note_desc">Eliminar nota</string>
+    <string name="all_notes_button">Mis notas</string>
+    <string name="all_notes_dialog_title">Agenda y Búsqueda de Notas</string>
+    <string name="search_notes_placeholder">Buscar por título, categoría o fecha…</string>
+    <string name="all_notes_empty">Aún no tienes notas guardadas.</string>
+    <string name="backup_card_title">Respaldo Local (JSON)</string>
+    <string name="backup_card_subtitle">Exporta o restaura tus notas, husos horarios, historial y preferencias sin conexión ni permisos invasivos.</string>
+    <string name="backup_export_button">Exportar JSON</string>
+    <string name="backup_import_button">Restaurar JSON</string>
 
     <!-- Moon Screen -->
     <string name="moon_observatory_title">Observatorio Lunar</string>
@@ -32,46 +38,44 @@
     <string name="synodic_progress">Progreso del Ciclo Sinódico</string>
     <string name="distance_earth_moon">Distancia Tierra-Luna</string>
     <string name="zodiac_constellation">Tránsito Eclíptico</string>
-    <string name="moonrise_moonset_label">Salida y Puesta Lunar</string>
-    <string name="meridian_transit_label">Culminación Lunar</string>
+    <string name="angular_diameter_label">Diámetro Angular</string>
+    <string name="ecliptic_latitude_label">Latitud Eclíptica</string>
     <string name="upcoming_major_phases">Próximas 4 Fases Principales</string>
     <string name="upcoming_eclipses_supermoons">Superlunas y Eclipses</string>
     <string name="lunar_alerts_chip_on">Alertas Lunares: Activas</string>
     <string name="lunar_alerts_chip_off">Avisar Llena/Nueva</string>
-    <string name="biorhythm_activity_title">Guía Tradicional del Ciclo</string>
     <string name="jump_plus_7">+7 días</string>
     <string name="jump_minus_7">-7 días</string>
 
     <!-- Clock Screen -->
-    <string name="clock_tab_world">Reloj y Husos</string>
+    <string name="clock_tab_world">Reloj</string>
     <string name="clock_tab_stopwatch">Cronómetro</string>
     <string name="clock_tab_timer">Temporizador</string>
     <string name="clock_format_24h">24h</string>
     <string name="clock_format_12h">12h AM/PM</string>
     <string name="world_clocks_title">Reloj Mundial Personalizable</string>
-    <string name="manage_cities_button">Ciudades</string>
-    <string name="manage_world_cities">Gestionar Husos Horarios</string>
-    <string name="search_city_placeholder">Buscar ciudad o región…</string>
+    <string name="manage_cities_button">Agregar ciudad</string>
+    <string name="manage_world_cities">Agregar o Quitar Ciudades</string>
+    <string name="search_city_placeholder">Buscar ciudad, país o zona…</string>
+    <string name="world_clocks_empty_hint">Sin ciudades agregadas. Pulsa «Agregar ciudad» para elegir los husos horarios que quieras consultar.</string>
+    <string name="delete_city_desc">Quitar ciudad</string>
+    <string name="dialog_done_button">Listo</string>
+    <string name="dialog_cancel_button">Cancelar</string>
     <string name="stopwatch_start">Iniciar</string>
     <string name="stopwatch_pause">Pausar</string>
     <string name="stopwatch_lap">Vuelta</string>
     <string name="stopwatch_reset">Reiniciar</string>
     <string name="timer_finished_message">¡Tiempo completado! (Sonido y vibración)</string>
+    <string name="timer_custom_chip">Personalizar HH:MM:SS</string>
+    <string name="timer_custom_dialog_title">Duración personalizada</string>
 
     <!-- Calculator Screen -->
-    <string name="calc_mode_standard">Científica</string>
-    <string name="calc_mode_dates">Fechas y Ciclos</string>
     <string name="calc_history_title">Historial Guardado</string>
-    <string name="calc_history_empty">Tus operaciones matemáticas y lunares se guardarán aquí</string>
+    <string name="calc_history_empty">Tus operaciones científicas se guardarán aquí</string>
     <string name="calc_clear_history">Limpiar</string>
-    <string name="calc_synodic_button">× Ciclo Lunar (29.53d)</string>
-    <string name="date_calc_title">Calculadora de Fechas y Lunas</string>
-    <string name="date_calc_base_date">Fecha base seleccionada</string>
-    <string name="date_calc_offset_days">Sumar o restar días</string>
-    <string name="date_calc_offset_synodic">Sumar ciclos lunares (29.53 d)</string>
-    <string name="date_calc_result_label">Fecha Resultante y Fase Lunar</string>
-    <string name="apply_to_calendar">Ir a esta fecha en el Calendario</string>
-    <string name="pick_date_button">Elegir fecha</string>
+    <string name="calc_inv_label">INV</string>
+    <string name="calc_copy_label">Copiar</string>
+    <string name="calc_copied_label">Copiado</string>
 
     <!-- Home Screen Widget -->
     <string name="widget_moon_title">TodUno: Fase Lunar</string>

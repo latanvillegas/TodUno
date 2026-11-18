@@ -1,6 +1,6 @@
 {
   "name": "TodUno",
-  "description": "Calendario astronómico, fases de la luna en tiempo real, reloj mundial y calculadora científica y de fechas en una sola aplicación.",
+  "description": "Calendario lunar, observatorio astronómico de la luna, reloj mundial personalizable y calculadora científica en una sola aplicación.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

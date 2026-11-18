@@ -24,7 +24,9 @@ import com.example.R
 import com.example.domain.LunarAstronomer
 import com.example.domain.MoonPhaseType
 import com.example.domain.SimpleDate
+import kotlinx.coroutines.launch
 import java.util.Calendar
+import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -165,9 +167,14 @@ object SeleniaAlertManager {
     fun scheduleBackgroundTimerAlert(context: Context, remainingDurationMs: Long, totalSeconds: Int) {
         val appCtx = context.applicationContext
         val alarmManager = appCtx.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-        val mins = totalSeconds / 60
+        val hrs = totalSeconds / 3600
+        val mins = (totalSeconds % 3600) / 60
         val secs = totalSeconds % 60
-        val label = if (mins > 0) "${mins}m ${secs}s" else "${secs}s"
+        val label = when {
+            hrs > 0 -> "${hrs}h ${mins}m ${secs}s"
+            mins > 0 -> "${mins}m ${secs}s"
+            else -> "${secs}s"
+        }
         val intent = Intent(appCtx, LunarNotificationReceiver::class.java).apply {
             putExtra(EXTRA_NOTIFICATION_ID, TIMER_NOTIFICATION_ID)
             putExtra(EXTRA_TITLE, "¡Temporizador completado! ($label)")
@@ -193,7 +200,6 @@ object SeleniaAlertManager {
         val appCtx = context.applicationContext
         val alarmManager = appCtx.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
         val intent = Intent(appCtx, LunarNotificationReceiver::class.java)
-        // FLAG_NO_CREATE avoids allocating a new PendingIntent record when none exists
         val pi = PendingIntent.getBroadcast(
             appCtx,
             TIMER_NOTIFICATION_ID,
@@ -211,16 +217,20 @@ object SeleniaAlertManager {
         noteId: Long,
         date: SimpleDate,
         title: String,
-        category: String
+        category: String,
+        reminderHour: Int = 9,
+        reminderMinute: Int = 0
     ) {
         val appCtx = context.applicationContext
         val alarmManager = appCtx.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        val safeHour = reminderHour.coerceIn(0, 23)
+        val safeMinute = reminderMinute.coerceIn(0, 59)
         val cal = Calendar.getInstance().apply {
             set(Calendar.YEAR, date.year)
             set(Calendar.MONTH, date.month - 1)
             set(Calendar.DAY_OF_MONTH, date.day)
-            set(Calendar.HOUR_OF_DAY, 9)
-            set(Calendar.MINUTE, 0)
+            set(Calendar.HOUR_OF_DAY, safeHour)
+            set(Calendar.MINUTE, safeMinute)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }
@@ -233,10 +243,11 @@ object SeleniaAlertManager {
 
         val safeTitle = title.take(160)
         val safeCategory = category.take(36)
+        val formattedTime = "%02d:%02d".format(Locale.US, safeHour, safeMinute)
         val reqCode = NOTE_BASE_ID + ((noteId and 0x7FFF_FFFFL) % 10000L).toInt()
         val intent = Intent(appCtx, LunarNotificationReceiver::class.java).apply {
             putExtra(EXTRA_NOTIFICATION_ID, reqCode)
-            putExtra(EXTRA_TITLE, "Recordatorio TodUno • $safeCategory")
+            putExtra(EXTRA_TITLE, "Recordatorio TodUno • $safeCategory ($formattedTime)")
             putExtra(EXTRA_BODY, "$safeTitle (${date.formatSpanishShort()})")
             putExtra(EXTRA_IS_TIMER, false)
         }
@@ -246,7 +257,7 @@ object SeleniaAlertManager {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        alarmManager.setWindow(AlarmManager.RTC_WAKEUP, triggerMs, 15 * 60 * 1000L, pi)
+        alarmManager.setWindow(AlarmManager.RTC_WAKEUP, triggerMs, 5 * 60 * 1000L, pi)
     }
 
     fun cancelNoteReminder(context: Context, noteId: Long) {
@@ -316,7 +327,6 @@ object SeleniaAlertManager {
                     intent,
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
-                // Coalesced 45-minute window lets Android batch wakeups during Doze maintenance windows
                 alarmManager.setWindow(AlarmManager.RTC_WAKEUP, cal.timeInMillis, 45 * 60 * 1000L, pi)
             }
         }
@@ -382,5 +392,58 @@ class LunarNotificationReceiver : BroadcastReceiver() {
             body = body,
             isTimer = isTimer
         )
+    }
+}
+
+class BootRescheduleReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val action = intent.action ?: return
+        if (action != Intent.ACTION_BOOT_COMPLETED &&
+            action != Intent.ACTION_MY_PACKAGE_REPLACED &&
+            action != Intent.ACTION_TIMEZONE_CHANGED &&
+            action != Intent.ACTION_TIME_CHANGED
+        ) {
+            return
+        }
+        val appCtx = context.applicationContext
+        val pendingResult = goAsync()
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                val repository = com.example.data.SeleniaRepository.getInstance(appCtx)
+                val settings = repository.getPersistedSettingsSnapshot()
+                if (settings.lunarAlertsEnabled) {
+                    SeleniaAlertManager.syncUpcomingLunarPhaseAlerts(appCtx, true)
+                }
+                val reminderNotes = repository.getReminderNotes()
+                reminderNotes.forEach { note ->
+                    SeleniaAlertManager.scheduleNoteReminder(
+                        context = appCtx,
+                        noteId = note.id,
+                        date = note.date,
+                        title = note.title,
+                        category = note.category,
+                        reminderHour = note.reminderHour,
+                        reminderMinute = note.reminderMinute
+                    )
+                }
+                if (action == Intent.ACTION_BOOT_COMPLETED || action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+                    val nowWall = System.currentTimeMillis()
+                    if (settings.timerRunning && settings.timerEndWallEpochMs > nowWall) {
+                        SeleniaAlertManager.scheduleBackgroundTimerAlert(
+                            context = appCtx,
+                            remainingDurationMs = settings.timerEndWallEpochMs - nowWall,
+                            totalSeconds = settings.timerTotalSeconds
+                        )
+                    }
+                }
+                com.example.widget.SeleniaMoonWidgetProvider.refreshAllWidgets(
+                    context = appCtx,
+                    isNorthernHemisphereOverride = settings.isNorthernHemisphere
+                )
+            } catch (_: Throwable) {
+            } finally {
+                pendingResult.finish()
+            }
+        }
     }
 }

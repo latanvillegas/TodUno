@@ -33,6 +33,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -48,6 +49,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -78,12 +80,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.example.R
+import com.example.domain.LunarAstronomer
+import com.example.domain.SimpleDate
 import com.example.notifications.SeleniaAlertManager
 import com.example.ui.ClockSubTab
 import com.example.ui.SeleniaUiState
@@ -122,47 +127,154 @@ private val TIMER_PRESETS = listOf(
 
 @Immutable
 private data class WorldCitySpec(
-    val city: String,
-    val region: String,
-    val timeZoneId: String
-) {
-    val timeZone: TimeZone = TimeZone.getTimeZone(timeZoneId)
+    val timeZoneId: String,
+    val cityName: String,
+    val regionLabel: String,
+    val normalizedSearchKey: String
+)
+
+private fun normalizeCitySearch(text: String): String {
+    val sb = StringBuilder(text.length)
+    for (ch in text.lowercase(Locale.ROOT)) {
+        val mapped = when (ch) {
+            'á', 'à', 'ä', 'â', 'ã' -> 'a'
+            'é', 'è', 'ë', 'ê' -> 'e'
+            'í', 'ì', 'ï', 'î' -> 'i'
+            'ó', 'ò', 'ö', 'ô', 'õ' -> 'o'
+            'ú', 'ù', 'ü', 'û' -> 'u'
+            'ñ' -> 'n'
+            'ç' -> 'c'
+            '_' -> ' '
+            else -> ch
+        }
+        sb.append(mapped)
+    }
+    return sb.toString().trim()
 }
 
-@Immutable
-private data class WorldCityFormattedEntry(
-    val timeZoneId: String,
-    val city: String,
-    val region: String,
-    val isDaylight: Boolean,
-    val timeText: String
+private fun buildWorldCitySpec(
+    timeZoneId: String,
+    cityName: String,
+    regionLabel: String
+): WorldCitySpec = WorldCitySpec(
+    timeZoneId = timeZoneId,
+    cityName = cityName,
+    regionLabel = regionLabel,
+    normalizedSearchKey = normalizeCitySearch("$cityName $regionLabel $timeZoneId")
 )
 
-private val WORLD_CITIES = listOf(
-    WorldCitySpec("Tiempo Universal (UTC)", "Referencia Astronómica", "UTC"),
-    WorldCitySpec("Madrid / París", "Europa Central", "Europe/Madrid"),
-    WorldCitySpec("Londres / Lisboa", "Europa Occidental", "Europe/London"),
-    WorldCitySpec("Berlín / Roma", "Europa Continental", "Europe/Berlin"),
-    WorldCitySpec("Ciudad de México", "América Central", "America/Mexico_City"),
-    WorldCitySpec("Bogotá / Lima / Quito", "Andes / Pacífico", "America/Bogota"),
-    WorldCitySpec("Buenos Aires", "Cono Sur Atlántico", "America/Argentina/Buenos_Aires"),
-    WorldCitySpec("Santiago de Chile", "Pacífico Austral", "America/Santiago"),
-    WorldCitySpec("Caracas / La Paz", "Caribe / Altiplano", "America/Caracas"),
-    WorldCitySpec("São Paulo / Río", "Brasil Oriental", "America/Sao_Paulo"),
-    WorldCitySpec("Nueva York / Miami", "Costa Este EE. UU.", "America/New_York"),
-    WorldCitySpec("Chicago / Dallas", "Centro Norteamérica", "America/Chicago"),
-    WorldCitySpec("Los Ángeles / Tijuana", "Costa Oeste Pacífico", "America/Los_Angeles"),
-    WorldCitySpec("Honolulú", "Pacífico Central", "Pacific/Honolulu"),
-    WorldCitySpec("El Cairo / Atenas", "Mediterráneo Oriental", "Africa/Cairo"),
-    WorldCitySpec("Estambul / Riad", "Oriente Próximo", "Europe/Istanbul"),
-    WorldCitySpec("Dubái", "Golfo Pérsico", "Asia/Dubai"),
-    WorldCitySpec("Nueva Delhi", "Subcontinente Indio", "Asia/Kolkata"),
-    WorldCitySpec("Singapur / Pekín", "Sudeste Asiático / China", "Asia/Singapore"),
-    WorldCitySpec("Tokio / Seúl", "Asia Oriental", "Asia/Tokyo"),
-    WorldCitySpec("Sídney", "Oceanía Oriental", "Australia/Sydney")
+private val ALLOWED_IANA_PREFIXES = setOf(
+    "America",
+    "Europe",
+    "Asia",
+    "Pacific",
+    "Africa",
+    "Australia",
+    "Atlantic",
+    "Indian"
 )
 
-private val WORLD_CITIES_BY_ID = WORLD_CITIES.associateBy { it.timeZoneId }
+private fun translateRegionPrefix(prefix: String): String = when (prefix) {
+    "America" -> "América"
+    "Europe" -> "Europa"
+    "Asia" -> "Asia"
+    "Pacific" -> "Pacífico"
+    "Africa" -> "África"
+    "Australia" -> "Oceanía / Australia"
+    "Atlantic" -> "Atlántico"
+    "Indian" -> "Océano Índico"
+    else -> prefix
+}
+
+private val WORLD_CITIES: List<WorldCitySpec> by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    val curated = listOf(
+        buildWorldCitySpec("America/Lima", "Lima", "Perú • América del Sur"),
+        buildWorldCitySpec("America/Mexico_City", "Ciudad de México", "México • América del Norte"),
+        buildWorldCitySpec("America/Bogota", "Bogotá", "Colombia • América del Sur"),
+        buildWorldCitySpec("America/Argentina/Buenos_Aires", "Buenos Aires", "Argentina • Cono Sur"),
+        buildWorldCitySpec("America/Santiago", "Santiago", "Chile • Cono Sur"),
+        buildWorldCitySpec("Europe/Madrid", "Madrid", "España • Europa"),
+        buildWorldCitySpec("America/Guayaquil", "Quito / Guayaquil", "Ecuador • América del Sur"),
+        buildWorldCitySpec("America/Caracas", "Caracas", "Venezuela • Caribe"),
+        buildWorldCitySpec("America/La_Paz", "La Paz", "Bolivia • América del Sur"),
+        buildWorldCitySpec("America/Asuncion", "Asunción", "Paraguay • América del Sur"),
+        buildWorldCitySpec("America/Montevideo", "Montevideo", "Uruguay • Cono Sur"),
+        buildWorldCitySpec("America/Panama", "Ciudad de Panamá", "Panamá • América Central"),
+        buildWorldCitySpec("America/Costa_Rica", "San José", "Costa Rica • América Central"),
+        buildWorldCitySpec("America/Santo_Domingo", "Santo Domingo", "República Dominicana • Caribe"),
+        buildWorldCitySpec("America/Puerto_Rico", "San Juan", "Puerto Rico • Caribe"),
+        buildWorldCitySpec("America/Havana", "La Habana", "Cuba • Caribe"),
+        buildWorldCitySpec("America/Guatemala", "Ciudad de Guatemala", "Guatemala • América Central"),
+        buildWorldCitySpec("America/El_Salvador", "San Salvador", "El Salvador • América Central"),
+        buildWorldCitySpec("America/Tegucigalpa", "Tegucigalpa", "Honduras • América Central"),
+        buildWorldCitySpec("America/Managua", "Managua", "Nicaragua • América Central"),
+        buildWorldCitySpec("America/New_York", "Nueva York / Miami", "Estados Unidos • Costa Este"),
+        buildWorldCitySpec("America/Chicago", "Chicago / Dallas", "Estados Unidos • Centro"),
+        buildWorldCitySpec("America/Denver", "Denver", "Estados Unidos • Montaña"),
+        buildWorldCitySpec("America/Los_Angeles", "Los Ángeles / San Francisco", "Estados Unidos • Costa Oeste"),
+        buildWorldCitySpec("America/Toronto", "Toronto", "Canadá • Este"),
+        buildWorldCitySpec("America/Vancouver", "Vancouver", "Canadá • Oeste"),
+        buildWorldCitySpec("America/Sao_Paulo", "São Paulo / Río", "Brasil • América del Sur"),
+        buildWorldCitySpec("Europe/London", "Londres", "Reino Unido • Europa"),
+        buildWorldCitySpec("Europe/Paris", "París", "Francia • Europa Central"),
+        buildWorldCitySpec("Europe/Berlin", "Berlín", "Alemania • Europa Central"),
+        buildWorldCitySpec("Europe/Rome", "Roma", "Italia • Europa Central"),
+        buildWorldCitySpec("Europe/Lisbon", "Lisboa", "Portugal • Europa"),
+        buildWorldCitySpec("Europe/Zurich", "Zúrich", "Suiza • Europa Central"),
+        buildWorldCitySpec("Europe/Istanbul", "Estambul", "Turquía • Eurasia"),
+        buildWorldCitySpec("Africa/Cairo", "El Cairo", "Egipto • África"),
+        buildWorldCitySpec("Africa/Johannesburg", "Johannesburgo", "Sudáfrica • África"),
+        buildWorldCitySpec("Asia/Dubai", "Dubái", "Emiratos Árabes • Oriente Medio"),
+        buildWorldCitySpec("Asia/Kolkata", "Nueva Delhi / Bombay", "India • Asia del Sur"),
+        buildWorldCitySpec("Asia/Bangkok", "Bangkok", "Tailandia • Sudeste Asiático"),
+        buildWorldCitySpec("Asia/Singapore", "Singapur", "Singapur • Sudeste Asiático"),
+        buildWorldCitySpec("Asia/Shanghai", "Pekín / Shanghái", "China • Asia Oriental"),
+        buildWorldCitySpec("Asia/Hong_Kong", "Hong Kong", "Asia Oriental"),
+        buildWorldCitySpec("Asia/Tokyo", "Tokio", "Japón • Asia Oriental"),
+        buildWorldCitySpec("Asia/Seoul", "Seúl", "Corea del Sur • Asia Oriental"),
+        buildWorldCitySpec("Australia/Sydney", "Sídney", "Australia • Oceanía"),
+        buildWorldCitySpec("Pacific/Auckland", "Auckland", "Nueva Zelanda • Pacífico")
+    )
+
+    val seenIds = curated.mapTo(HashSet()) { it.timeZoneId }
+    val dynamicZones = TimeZone.getAvailableIDs()
+        .asSequence()
+        .filter { id ->
+            id !in seenIds &&
+                '/' in id &&
+                !id.startsWith("Etc/") &&
+                !id.startsWith("SystemV/") &&
+                id.substringBefore('/') in ALLOWED_IANA_PREFIXES
+        }
+        .map { id ->
+            val parts = id.split('/')
+            val regionPrefix = translateRegionPrefix(parts.first())
+            val cityLabel = parts.last().replace('_', ' ')
+            val subRegion = if (parts.size > 2) {
+                "$regionPrefix • ${parts[1].replace('_', ' ')}"
+            } else {
+                regionPrefix
+            }
+            buildWorldCitySpec(id, cityLabel, subRegion)
+        }
+        .sortedBy { it.cityName }
+        .toList()
+
+    curated + dynamicZones
+}
+
+private val WORLD_CITIES_BY_ID: Map<String, WorldCitySpec> by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    WORLD_CITIES.associateBy { it.timeZoneId }
+}
+
+private fun resolveWorldCitySpec(timeZoneId: String): WorldCitySpec {
+    WORLD_CITIES_BY_ID[timeZoneId]?.let { return it }
+    val parts = timeZoneId.split('/')
+    val cityLabel = parts.lastOrNull()?.replace('_', ' ')?.ifBlank { timeZoneId } ?: timeZoneId
+    val regionLabel = if (parts.size > 1) translateRegionPrefix(parts.first()) else "Zona Horaria"
+    return buildWorldCitySpec(timeZoneId, cityLabel, regionLabel)
+}
+
 
 /**
  * Observes Android Battery Saver ([PowerManager.isPowerSaveMode]) so high-frequency UI tickers
@@ -213,12 +325,14 @@ private fun ContextCompatSafeRegister(
 fun ClockScreen(
     uiState: SeleniaUiState,
     onSelectSubTab: (ClockSubTab) -> Unit,
+    onSelectWatchDialPreset: (String) -> Unit = {},
     onToggle24HourFormat: () -> Unit,
     onToggleWorldCity: (String) -> Unit = {},
     onToggleStopwatch: () -> Unit = {},
     onLapStopwatch: () -> Unit = {},
     onResetStopwatch: () -> Unit = {},
     onSelectTimerPreset: (Int) -> Unit = {},
+    onSetCustomTimerDuration: (Int, Int, Int) -> Unit = { _, _, _ -> },
     onAdjustTimerSeconds: (Int) -> Unit = {},
     onToggleTimer: () -> Unit = {},
     onResetTimer: () -> Unit = {},
@@ -301,10 +415,13 @@ fun ClockScreen(
                 ClockSubTab.WORLD_CLOCK -> AstronomicalAndWorldClockContent(
                     isPowerSaveMode = isPowerSaveMode,
                     is24Hour = uiState.is24HourFormat,
+                    watchDialPresetName = uiState.watchDialPresetName,
                     selectedWorldCityIds = uiState.selectedWorldCityIds,
                     moonPhaseFraction = uiState.selectedDayLunarInfo.phaseFraction,
                     moonPhaseName = uiState.selectedDayLunarInfo.phaseType.spanishName,
                     isNorthernHemisphere = uiState.isNorthernHemisphere,
+                    timeZoneRevision = uiState.timeZoneRevision,
+                    onSelectWatchDialPreset = onSelectWatchDialPreset,
                     onToggle24Hour = onToggle24HourFormat,
                     onToggleWorldCity = onToggleWorldCity
                 )
@@ -328,6 +445,7 @@ fun ClockScreen(
                     isRunning = uiState.timerRunning,
                     isFinishedAlert = uiState.timerFinishedAlert,
                     onSelectPresetSeconds = onSelectTimerPreset,
+                    onSetCustomDuration = onSetCustomTimerDuration,
                     onAdjustSeconds = onAdjustTimerSeconds,
                     onToggleStartPause = {
                         if (!uiState.timerRunning &&
@@ -413,10 +531,13 @@ enum class WatchDialPreset(
 private fun AstronomicalAndWorldClockContent(
     isPowerSaveMode: Boolean,
     is24Hour: Boolean,
+    watchDialPresetName: String,
     selectedWorldCityIds: List<String>,
     moonPhaseFraction: Double,
     moonPhaseName: String,
     isNorthernHemisphere: Boolean,
+    timeZoneRevision: Int,
+    onSelectWatchDialPreset: (String) -> Unit,
     onToggle24Hour: () -> Unit,
     onToggleWorldCity: (String) -> Unit
 ) {
@@ -438,144 +559,31 @@ private fun AstronomicalAndWorldClockContent(
         }
     }
 
-    // Derived epochs prevent parent LazyColumn from recomposing at 4 Hz!
+    // Derived second & minute epochs prevent parent LazyColumn from recomposing at 4 Hz!
     val currentSecondEpoch by remember { derivedStateOf { currentMillis / 1_000L } }
     val currentMinuteEpoch by remember { derivedStateOf { currentMillis / 60_000L } }
 
-    var selectedDialPreset by rememberSaveable { mutableStateOf(WatchDialPreset.SAPPHIRE_ASTRAL) }
-    var showCitySelectorDialog by rememberSaveable { mutableStateOf(false) }
-    var citySearchQuery by rememberSaveable { mutableStateOf("") }
-
-    if (showCitySelectorDialog) {
-        val filteredCities = remember(citySearchQuery) {
-            val q = citySearchQuery.trim().lowercase(Locale.ROOT)
-            if (q.isEmpty()) WORLD_CITIES
-            else WORLD_CITIES.filter {
-                it.city.lowercase(Locale.ROOT).contains(q) ||
-                    it.region.lowercase(Locale.ROOT).contains(q) ||
-                    it.timeZoneId.lowercase(Locale.ROOT).contains(q)
-            }
-        }
-        AlertDialog(
-            onDismissRequest = { showCitySelectorDialog = false },
-            title = {
-                Text(
-                    text = stringResource(R.string.manage_world_cities),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            },
-            text = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OutlinedTextField(
-                        value = citySearchQuery,
-                        onValueChange = { citySearchQuery = it },
-                        leadingIcon = {
-                            Icon(imageVector = Icons.Default.Search, contentDescription = null)
-                        },
-                        label = { Text("Buscar ciudad o región") },
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("world_city_search_input")
-                    )
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(290.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        items(filteredCities, key = { it.timeZoneId }) { spec ->
-                            val isSelected = spec.timeZoneId in selectedWorldCityIds
-                            Surface(
-                                color = if (isSelected) {
-                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                                },
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onToggleWorldCity(spec.timeZoneId) }
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 12.dp, vertical = 9.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = spec.city,
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = "${spec.region} • ${spec.timeZoneId}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    if (isSelected) {
-                                        Icon(
-                                            imageVector = Icons.Default.Check,
-                                            contentDescription = "Seleccionada",
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showCitySelectorDialog = false }) {
-                    Text("Listo")
-                }
-            }
-        )
+    val selectedDialPreset = remember(watchDialPresetName) {
+        WatchDialPreset.entries.firstOrNull { it.name == watchDialPresetName }
+            ?: WatchDialPreset.SAPPHIRE_ASTRAL
     }
+    var showManageCitiesDialog by rememberSaveable { mutableStateOf(false) }
 
-    val activeCities = remember(selectedWorldCityIds) {
-        val resolved = selectedWorldCityIds.mapNotNull { WORLD_CITIES_BY_ID[it] }
-        resolved.ifEmpty { WORLD_CITIES.take(6) }
-    }
-
-    // World city entries only recompute once per minute (1/60 Hz)!
-    val worldCityEntries = remember(currentMinuteEpoch, is24Hour, activeCities) {
-        val minuteMs = currentMinuteEpoch * 60_000L
-        val cityCal = Calendar.getInstance()
-        activeCities.map { citySpec ->
-            cityCal.timeZone = citySpec.timeZone
-            cityCal.timeInMillis = minuteMs
-            val cHour = cityCal.get(Calendar.HOUR_OF_DAY)
-            val cMin = cityCal.get(Calendar.MINUTE)
-            val isDaylight = cHour in 6..18
-            val timeText = if (is24Hour) {
-                "%02d:%02d".format(Locale.US, cHour, cMin)
-            } else {
-                val h12 = if (cHour % 12 == 0) 12 else cHour % 12
-                val amPm = if (cHour < 12) "AM" else "PM"
-                "%02d:%02d %s".format(Locale.US, h12, cMin, amPm)
-            }
-            WorldCityFormattedEntry(
-                timeZoneId = citySpec.timeZoneId,
-                city = citySpec.city,
-                region = citySpec.region,
-                isDaylight = isDaylight,
-                timeText = timeText
-            )
-        }
+    // Strictly only cities added by the user (zero default/pre-populated cities)
+    val userAddedCities = remember(selectedWorldCityIds) {
+        selectedWorldCityIds.map { resolveWorldCitySpec(it) }
     }
 
     val watchLitColor = selectedDialPreset.bezelGoldColor
-    val localZoneId = remember { TimeZone.getDefault().id }
+    val localZoneId = remember(timeZoneRevision) { TimeZone.getDefault().id }
+
+    if (showManageCitiesDialog) {
+        WorldCitiesPickerDialog(
+            selectedWorldCityIds = selectedWorldCityIds,
+            onToggleWorldCity = onToggleWorldCity,
+            onDismiss = { showManageCitiesDialog = false }
+        )
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -644,7 +652,7 @@ private fun AstronomicalAndWorldClockContent(
                             val isSelected = selectedDialPreset == preset
                             FilterChip(
                                 selected = isSelected,
-                                onClick = { selectedDialPreset = preset },
+                                onClick = { onSelectWatchDialPreset(preset.name) },
                                 leadingIcon = {
                                     Box(
                                         modifier = Modifier
@@ -680,7 +688,8 @@ private fun AstronomicalAndWorldClockContent(
                     ) {
                         AstronomicalAnalogClockCanvas(
                             timeMillisProvider = { currentMillis },
-                            dialPreset = selectedDialPreset
+                            dialPreset = selectedDialPreset,
+                            timeZoneRevision = timeZoneRevision
                         )
 
                         Column(
@@ -717,24 +726,27 @@ private fun AstronomicalAndWorldClockContent(
                         secondEpoch = currentSecondEpoch,
                         is24Hour = is24Hour,
                         localZoneId = localZoneId,
+                        timeZoneRevision = timeZoneRevision,
                         dialPreset = selectedDialPreset
                     )
                 }
             }
         }
 
-        // 2. World Clocks Section
+        // 2. User-Customizable World Clock Card (starts empty until the user adds cities)
         item(key = "world_clocks_card") {
             Card(
+                shape = MaterialTheme.shapes.extraLarge,
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = MaterialTheme.shapes.large,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("world_clocks_card")
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -744,76 +756,67 @@ private fun AstronomicalAndWorldClockContent(
                         Text(
                             text = stringResource(R.string.world_clocks_title),
                             style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f)
                         )
+                        Spacer(modifier = Modifier.width(8.dp))
                         AssistChip(
-                            onClick = { showCitySelectorDialog = true },
+                            onClick = { showManageCitiesDialog = true },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.Add,
                                     contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(18.dp)
                                 )
                             },
-                            label = { Text("Ciudades (${activeCities.size})") },
+                            label = { Text(stringResource(R.string.manage_cities_button)) },
                             modifier = Modifier.testTag("manage_world_cities_button")
                         )
                     }
 
-                    worldCityEntries.forEach { entry ->
+                    if (userAddedCities.isEmpty()) {
                         Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            shape = MaterialTheme.shapes.medium,
-                            modifier = Modifier.fillMaxWidth()
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            shape = MaterialTheme.shapes.large,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("world_clocks_empty_state")
                         ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
+                                    .padding(horizontal = 16.dp, vertical = 18.dp),
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    SeleniaIconBadge(
-                                        icon = if (entry.isDaylight) {
-                                            SeleniaVectorIcons.WbSunny
-                                        } else {
-                                            SeleniaVectorIcons.NightsStay
-                                        },
-                                        tint = if (entry.isDaylight) {
-                                            Color(0xFFFFD54F)
-                                        } else {
-                                            Color(0xFF4DD0E1)
-                                        },
-                                        size = 36.dp,
-                                        iconSize = 18.dp,
-                                        isCircular = true
-                                    )
-                                    Column {
-                                        Text(
-                                            text = entry.city,
-                                            style = MaterialTheme.typography.titleSmall,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = entry.region,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
+                                SeleniaIconBadge(
+                                    icon = SeleniaVectorIcons.Public,
+                                    tint = MaterialTheme.colorScheme.secondary,
+                                    size = 40.dp,
+                                    iconSize = 20.dp,
+                                    isCircular = true
+                                )
                                 Text(
-                                    text = entry.timeText,
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (entry.isDaylight) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.secondary
-                                    }
+                                    text = stringResource(R.string.world_clocks_empty_hint),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                    } else {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            userAddedCities.forEach { city ->
+                                WorldCityClockRow(
+                                    city = city,
+                                    minuteEpoch = currentMinuteEpoch,
+                                    is24Hour = is24Hour,
+                                    timeZoneRevision = timeZoneRevision,
+                                    onRemoveCity = { onToggleWorldCity(city.timeZoneId) }
                                 )
                             }
                         }
@@ -824,17 +827,293 @@ private fun AstronomicalAndWorldClockContent(
     }
 }
 
+@Immutable
+private data class WorldCityClockSnapshot(
+    val formattedTime: String,
+    val diffMinutesFromLocal: Int,
+    val subtitle: String
+)
+
+@Composable
+private fun WorldCityClockRow(
+    city: WorldCitySpec,
+    minuteEpoch: Long,
+    is24Hour: Boolean,
+    timeZoneRevision: Int,
+    onRemoveCity: () -> Unit
+) {
+    val zone = remember(city.timeZoneId) { TimeZone.getTimeZone(city.timeZoneId) }
+    val localZone = remember(timeZoneRevision) { TimeZone.getDefault() }
+    val cityCal = remember(zone) { Calendar.getInstance(zone) }
+    val localCal = remember(localZone) { Calendar.getInstance(localZone) }
+
+    val snapshot = remember(minuteEpoch, is24Hour, zone, localZone, timeZoneRevision, city.regionLabel) {
+        val epochMs = minuteEpoch * 60_000L
+        cityCal.timeInMillis = epochMs
+        localCal.timeInMillis = epochMs
+
+        val hour24 = cityCal.get(Calendar.HOUR_OF_DAY)
+        val minute = cityCal.get(Calendar.MINUTE)
+        val timeStr = if (is24Hour) {
+            "%02d:%02d".format(Locale.US, hour24, minute)
+        } else {
+            val h12 = if (hour24 % 12 == 0) 12 else hour24 % 12
+            val amPm = if (hour24 < 12) "AM" else "PM"
+            "%02d:%02d %s".format(Locale.US, h12, minute, amPm)
+        }
+
+        val offsetTotalMinutes = zone.getOffset(epochMs) / 60_000
+        val localOffsetMinutes = localZone.getOffset(epochMs) / 60_000
+        val diffMin = offsetTotalMinutes - localOffsetMinutes
+
+        val sign = if (offsetTotalMinutes >= 0) "+" else "-"
+        val absMin = kotlin.math.abs(offsetTotalMinutes)
+        val offH = absMin / 60
+        val offM = absMin % 60
+        val utcStr = if (offM == 0) {
+            "UTC$sign$offH"
+        } else {
+            "UTC$sign%d:%02d".format(Locale.US, offH, offM)
+        }
+
+        val diffLabel = when {
+            diffMin == 0 -> "Mismo huso"
+            diffMin % 60 == 0 -> "%+dh".format(Locale.US, diffMin / 60)
+            else -> {
+                val dSign = if (diffMin > 0) "+" else "-"
+                val absDiff = kotlin.math.abs(diffMin)
+                "%s%dh %02dm".format(Locale.US, dSign, absDiff / 60, absDiff % 60)
+            }
+        }
+
+        val cityDate = SimpleDate(
+            year = cityCal.get(Calendar.YEAR),
+            month = cityCal.get(Calendar.MONTH) + 1,
+            day = cityCal.get(Calendar.DAY_OF_MONTH)
+        )
+        val localDate = SimpleDate(
+            year = localCal.get(Calendar.YEAR),
+            month = localCal.get(Calendar.MONTH) + 1,
+            day = localCal.get(Calendar.DAY_OF_MONTH)
+        )
+        val dayDelta = LunarAstronomer.daysBetween(localDate, cityDate)
+        val dayRelLabel = when (dayDelta) {
+            0 -> "Hoy"
+            1 -> "Mañana"
+            -1 -> "Ayer"
+            else -> "%+dd".format(Locale.US, dayDelta)
+        }
+
+        WorldCityClockSnapshot(
+            formattedTime = timeStr,
+            diffMinutesFromLocal = diffMin,
+            subtitle = "${city.regionLabel} • $utcStr • $dayRelLabel ($diffLabel)"
+        )
+    }
+
+    val accentColor = if (snapshot.diffMinutesFromLocal >= 0) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.secondary
+    }
+
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("world_city_row_${city.timeZoneId}")
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 14.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            SeleniaIconBadge(
+                icon = if (snapshot.diffMinutesFromLocal == 0) {
+                    SeleniaVectorIcons.AccessTime
+                } else {
+                    SeleniaVectorIcons.Public
+                },
+                tint = accentColor,
+                size = 36.dp,
+                iconSize = 18.dp,
+                isCircular = true
+            )
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = city.cityName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = snapshot.subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Text(
+                text = snapshot.formattedTime,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = accentColor
+            )
+
+            IconButton(
+                onClick = onRemoveCity,
+                modifier = Modifier.testTag("remove_world_city_${city.timeZoneId}")
+            ) {
+                Icon(
+                    imageVector = SeleniaVectorIcons.DeleteOutline,
+                    contentDescription = stringResource(R.string.delete_city_desc),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorldCitiesPickerDialog(
+    selectedWorldCityIds: List<String>,
+    onToggleWorldCity: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    val selectedSet = remember(selectedWorldCityIds) { selectedWorldCityIds.toHashSet() }
+
+    val filteredCities = remember(searchQuery, selectedSet) {
+        val norm = normalizeCitySearch(searchQuery)
+        if (norm.isEmpty()) {
+            // Show any already-added cities at the top followed by the catalog for browsing
+            val addedFirst = selectedWorldCityIds.map { resolveWorldCitySpec(it) }
+            val remaining = WORLD_CITIES.filter { it.timeZoneId !in selectedSet }
+            addedFirst + remaining
+        } else {
+            WORLD_CITIES.filter { city ->
+                city.normalizedSearchKey.contains(norm)
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = stringResource(R.string.manage_world_cities),
+                style = MaterialTheme.typography.titleLarge
+            )
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    singleLine = true,
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = null
+                        )
+                    },
+                    placeholder = {
+                        Text(stringResource(R.string.search_city_placeholder))
+                    },
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("search_world_city_input")
+                )
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(320.dp)
+                        .testTag("world_cities_picker_list"),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(filteredCities, key = { it.timeZoneId }) { city ->
+                        val isAdded = city.timeZoneId in selectedSet
+                        Surface(
+                            color = if (isAdded) {
+                                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                            },
+                            shape = MaterialTheme.shapes.medium,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(MaterialTheme.shapes.medium)
+                                .clickable { onToggleWorldCity(city.timeZoneId) }
+                                .testTag("picker_city_option_${city.timeZoneId}")
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = city.cityName,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = if (isAdded) FontWeight.SemiBold else FontWeight.Normal,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = city.regionLabel,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Icon(
+                                    imageVector = if (isAdded) Icons.Default.Check else Icons.Default.Add,
+                                    contentDescription = null,
+                                    tint = if (isAdded) {
+                                        MaterialTheme.colorScheme.secondary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.testTag("world_cities_dialog_done")
+            ) {
+                Text(stringResource(R.string.dialog_done_button))
+            }
+        }
+    )
+}
+
 @Composable
 private fun OneHertzAstronomicalReadout(
     secondEpoch: Long,
     is24Hour: Boolean,
     localZoneId: String,
+    timeZoneRevision: Int,
     dialPreset: WatchDialPreset
 ) {
-    val localCal = remember { Calendar.getInstance() }
+    val localCal = remember(timeZoneRevision) { Calendar.getInstance() }
     val utcCal = remember { Calendar.getInstance(TimeZone.getTimeZone("UTC")) }
 
-    val formattedDigitalTime = remember(secondEpoch, is24Hour) {
+    val formattedDigitalTime = remember(secondEpoch, is24Hour, timeZoneRevision) {
         localCal.timeInMillis = secondEpoch * 1_000L
         val hour24 = localCal.get(Calendar.HOUR_OF_DAY)
         val minute = localCal.get(Calendar.MINUTE)
@@ -944,9 +1223,10 @@ private fun OneHertzAstronomicalReadout(
 @Composable
 private fun AstronomicalAnalogClockCanvas(
     timeMillisProvider: () -> Long,
-    dialPreset: WatchDialPreset
+    dialPreset: WatchDialPreset,
+    timeZoneRevision: Int = 0
 ) {
-    val drawCalendar = remember { Calendar.getInstance() }
+    val drawCalendar = remember(timeZoneRevision) { Calendar.getInstance() }
     val bezelGold = dialPreset.bezelGoldColor
     val innerCyan = dialPreset.innerRingColor
     val dialCenterColor = dialPreset.dialCenterColor
@@ -1383,11 +1663,25 @@ private fun TimerContent(
     isRunning: Boolean,
     isFinishedAlert: Boolean,
     onSelectPresetSeconds: (Int) -> Unit,
+    onSetCustomDuration: (Int, Int, Int) -> Unit,
     onAdjustSeconds: (Int) -> Unit,
     onToggleStartPause: () -> Unit,
     onReset: () -> Unit,
     onReachedZero: () -> Unit
 ) {
+    var showCustomDurationDialog by rememberSaveable { mutableStateOf(false) }
+
+    if (showCustomDurationDialog) {
+        CustomTimerDurationDialog(
+            initialTotalSeconds = totalSeconds,
+            onDismiss = { showCustomDurationDialog = false },
+            onConfirm = { h, m, s ->
+                showCustomDurationDialog = false
+                onSetCustomDuration(h, m, s)
+            }
+        )
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -1449,6 +1743,18 @@ private fun TimerContent(
                                 label = { Text(label) }
                             )
                         }
+                        AssistChip(
+                            onClick = { showCustomDurationDialog = true },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = SeleniaVectorIcons.Edit,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
+                            label = { Text(stringResource(R.string.timer_custom_chip)) },
+                            modifier = Modifier.testTag("custom_timer_dialog_button")
+                        )
                     }
 
                     Row(
@@ -1486,6 +1792,95 @@ private fun TimerContent(
             }
         }
     }
+}
+
+@Composable
+private fun CustomTimerDurationDialog(
+    initialTotalSeconds: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int, Int, Int) -> Unit
+) {
+    val initH = (initialTotalSeconds / 3600).coerceIn(0, 23)
+    val initM = ((initialTotalSeconds % 3600) / 60).coerceIn(0, 59)
+    val initS = (initialTotalSeconds % 60).coerceIn(0, 59)
+
+    var hoursText by rememberSaveable { mutableStateOf("%02d".format(Locale.US, initH)) }
+    var minutesText by rememberSaveable { mutableStateOf("%02d".format(Locale.US, initM)) }
+    var secondsText by rememberSaveable { mutableStateOf("%02d".format(Locale.US, initS)) }
+
+    val hVal = hoursText.toIntOrNull()?.coerceIn(0, 23) ?: 0
+    val mVal = minutesText.toIntOrNull()?.coerceIn(0, 59) ?: 0
+    val sVal = secondsText.toIntOrNull()?.coerceIn(0, 59) ?: 0
+    val isValidPositive = (hVal * 3600 + mVal * 60 + sVal) >= 1
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = stringResource(R.string.timer_custom_dialog_title),
+                style = MaterialTheme.typography.titleLarge
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Configura horas, minutos y segundos (hasta 23:59:59):",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = hoursText,
+                        onValueChange = { hoursText = it.filter { ch -> ch.isDigit() }.take(2) },
+                        label = { Text("Horas") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("custom_timer_hours_input")
+                    )
+                    OutlinedTextField(
+                        value = minutesText,
+                        onValueChange = { minutesText = it.filter { ch -> ch.isDigit() }.take(2) },
+                        label = { Text("Min") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("custom_timer_minutes_input")
+                    )
+                    OutlinedTextField(
+                        value = secondsText,
+                        onValueChange = { secondsText = it.filter { ch -> ch.isDigit() }.take(2) },
+                        label = { Text("Seg") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("custom_timer_seconds_input")
+                    )
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.dialog_cancel_button))
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(hVal, mVal, sVal) },
+                enabled = isValidPositive,
+                modifier = Modifier.testTag("confirm_custom_timer_button")
+            ) {
+                Text(stringResource(R.string.dialog_done_button))
+            }
+        }
+    )
 }
 
 @Composable
@@ -1535,7 +1930,7 @@ private fun LiveTimerCountdownDial(
 
     Box(
         contentAlignment = Alignment.Center,
-        modifier = Modifier.size(200.dp)
+        modifier = Modifier.size(210.dp)
     ) {
         val primaryColor = MaterialTheme.colorScheme.primary
         val trackColor = MaterialTheme.colorScheme.surfaceVariant
@@ -1566,11 +1961,21 @@ private fun LiveTimerCountdownDial(
         }
 
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            val mins = displaySeconds / 60
+            val hrs = displaySeconds / 3600
+            val mins = (displaySeconds % 3600) / 60
             val secs = displaySeconds % 60
+            val formattedCountdown = if (hrs > 0) {
+                "%02d:%02d:%02d".format(Locale.US, hrs, mins, secs)
+            } else {
+                "%02d:%02d".format(Locale.US, mins, secs)
+            }
             Text(
-                text = "%02d:%02d".format(Locale.US, mins, secs),
-                style = MaterialTheme.typography.displayMedium,
+                text = formattedCountdown,
+                style = if (hrs > 0) {
+                    MaterialTheme.typography.displaySmall
+                } else {
+                    MaterialTheme.typography.displayMedium
+                },
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.testTag("timer_countdown_display")
             )

@@ -3,7 +3,6 @@ package com.example.ui.components
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
@@ -41,74 +40,6 @@ private val ASTROLABE_SIN = FloatArray(12) { i -> sin(i * PI / 6.0).toFloat() }
 private val TYCHO_RAY_COS = FloatArray(6) { i -> cos((-0.75 + i * 0.30) * PI).toFloat() }
 private val TYCHO_RAY_ABS_SIN = FloatArray(6) { i -> abs(sin((-0.75 + i * 0.30) * PI)).toFloat() }
 
-/**
- * 6 curated 3D astronomical color atmospheres for the Moon Observatory.
- */
-@Immutable
-enum class LunarAtmospherePreset(
-    val spanishName: String,
-    val shortChip: String,
-    val litColor: Color,
-    val highlightColor: Color,
-    val shadowColor: Color,
-    val coronaSecondaryColor: Color,
-    val description: String
-) {
-    AUTO_PHASE(
-        spanishName = "Dinámico por Fase",
-        shortChip = "Por Fase",
-        litColor = Color(0xFFFFD54F),
-        highlightColor = Color(0xFFFFFDE7),
-        shadowColor = Color(0xFF0E1730),
-        coronaSecondaryColor = Color(0xFF4DD0E1),
-        description = "Cambia automáticamente: Oro Solar en creciente, Ámbar en llena y Plata-Cian en menguante."
-    ),
-    SELENITE_PEARL(
-        spanishName = "Perla Selenita (Realista)",
-        shortChip = "Perla Real",
-        litColor = Color(0xFFF3E6C8),
-        highlightColor = Color(0xFFFFFFFF),
-        shadowColor = Color(0xFF0F1932),
-        coronaSecondaryColor = Color(0xFF80DEEA),
-        description = "Color astrofotográfico real del regolito lunar con luz cenicienta terrestre azulada."
-    ),
-    SUPERMOON_GOLD(
-        spanishName = "Superluna de Cosecha (Oro 3D)",
-        shortChip = "Superluna Oro",
-        litColor = Color(0xFFFFB300),
-        highlightColor = Color(0xFFFFF8E1),
-        shadowColor = Color(0xFF1A1228),
-        coronaSecondaryColor = Color(0xFFFF6F00),
-        description = "Resplandor cálido dorado-ámbar propio del perigeo lunar cerca del horizonte."
-    ),
-    BLOOD_ECLIPSE(
-        spanishName = "Luna de Sangre (Eclipse)",
-        shortChip = "Luna Sangre",
-        litColor = Color(0xFFE53935),
-        highlightColor = Color(0xFFFFCCBC),
-        shadowColor = Color(0xFF1F080C),
-        coronaSecondaryColor = Color(0xFFFF7043),
-        description = "Atmósfera rojiza cobriza producida por la dispersión de Rayleigh en eclipses totales."
-    ),
-    BLUE_SIDEREAL(
-        spanishName = "Luna Azul Sideral",
-        shortChip = "Luna Azul",
-        litColor = Color(0xFF4DD0E1),
-        highlightColor = Color(0xFFE0F7FA),
-        shadowColor = Color(0xFF08182B),
-        coronaSecondaryColor = Color(0xFF536DFE),
-        description = "Tono cian-zafiro de alta nitidez para observación telescópica nocturna."
-    ),
-    NEBULA_VIOLET(
-        spanishName = "Nebulosa Ultravioleta",
-        shortChip = "Ultravioleta",
-        litColor = Color(0xFFB388FF),
-        highlightColor = Color(0xFFF3E5F5),
-        shadowColor = Color(0xFF140D2B),
-        coronaSecondaryColor = Color(0xFFFF4081),
-        description = "Estética de espacio profundo con corona magenta-violeta de alto contraste."
-    )
-}
 
 /**
  * Returns the recommended 3D astronomical color palette for a given [MoonPhaseType] in the calendar.
@@ -135,10 +66,10 @@ fun RealisticMoonCanvas(
     modifier: Modifier = Modifier,
     isNorthernHemisphere: Boolean = true,
     showAmbientGlow: Boolean = true,
-    litColor: Color = Color(0xFFF7E7B4),
-    litHighlightColor: Color = litColor.lighter(0.48f),
-    shadowColor: Color = Color(0xFF101733),
-    coronaSecondaryColor: Color = Color(0xFF4DD0E1)
+    litColor: Color = Color(0xFFF3E6C8),
+    litHighlightColor: Color = Color(0xFFFFFFFF),
+    shadowColor: Color = Color(0xFF0F1932),
+    coronaSecondaryColor: Color = Color(0xFF80DEEA)
 ) {
     val cachedLitPath = remember { Path() }
     val lighterShadowColor = remember(shadowColor) { shadowColor.lighter(0.16f) }

@@ -1,5 +1,10 @@
 package com.example
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -111,16 +116,38 @@ private val NAV_ITEMS = listOf(
 fun SeleniaApp(
     viewModel: SeleniaViewModel = viewModel()
 ) {
+    val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner, viewModel) {
+
+    DisposableEffect(lifecycleOwner, viewModel, context) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 viewModel.onAppResumed()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
+
+        val timeReceiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                viewModel.onSystemTimeOrZoneChanged()
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
+            addAction(Intent.ACTION_TIME_CHANGED)
+            addAction(Intent.ACTION_DATE_CHANGED)
+        }
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.registerReceiver(timeReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                context.registerReceiver(timeReceiver, filter)
+            }
+        }
+
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+            runCatching { context.unregisterReceiver(timeReceiver) }
         }
     }
 
@@ -226,16 +253,6 @@ private fun SeleniaMainContent(
     viewModel: SeleniaViewModel,
     modifier: Modifier = Modifier
 ) {
-    val onOpenMoonObservatory = remember(viewModel) {
-        { viewModel.navigateTo(AppDestination.MOON_OBSERVATORY) }
-    }
-    val onJumpToDateInCalendar = remember(viewModel) {
-        { targetDate: com.example.domain.SimpleDate ->
-            viewModel.selectDate(targetDate)
-            viewModel.navigateTo(AppDestination.CALENDAR)
-        }
-    }
-
     Crossfade(
         targetState = uiState.currentDestination,
         label = "SeleniaDestinationCrossfade",
@@ -248,10 +265,12 @@ private fun SeleniaMainContent(
                 onChangeMonth = viewModel::changeMonth,
                 onJumpToYearMonth = viewModel::jumpToYearMonth,
                 onJumpToToday = viewModel::jumpToToday,
-                onOpenMoonObservatory = onOpenMoonObservatory,
-                onSendAgeToCalculator = viewModel::sendSelectedDayLunarAgeToCalculator,
                 onAddNote = viewModel::addNoteForSelectedDate,
-                onDeleteNote = viewModel::deleteNote
+                onUpdateNote = viewModel::updateNote,
+                onDeleteNote = viewModel::deleteNote,
+                onExportBackupJson = viewModel::exportBackupJson,
+                onImportBackupJson = viewModel::importBackupJson,
+                onDismissBackupMessage = viewModel::dismissBackupStatusMessage
             )
 
             AppDestination.MOON_OBSERVATORY -> MoonObservatoryScreen(
@@ -266,12 +285,14 @@ private fun SeleniaMainContent(
             AppDestination.CLOCK -> ClockScreen(
                 uiState = uiState,
                 onSelectSubTab = viewModel::selectClockSubTab,
+                onSelectWatchDialPreset = viewModel::selectWatchDialPreset,
                 onToggle24HourFormat = viewModel::toggle24HourFormat,
                 onToggleWorldCity = viewModel::toggleWorldCity,
                 onToggleStopwatch = viewModel::toggleStopwatch,
                 onLapStopwatch = viewModel::lapStopwatch,
                 onResetStopwatch = viewModel::resetStopwatch,
                 onSelectTimerPreset = viewModel::selectTimerPresetSeconds,
+                onSetCustomTimerDuration = viewModel::setCustomTimerDuration,
                 onAdjustTimerSeconds = viewModel::adjustTimerSeconds,
                 onToggleTimer = viewModel::toggleTimerStartPause,
                 onResetTimer = viewModel::resetTimer,
@@ -280,25 +301,15 @@ private fun SeleniaMainContent(
 
             AppDestination.CALCULATOR -> CalculatorScreen(
                 uiState = uiState,
-                onSetMode = viewModel::setCalculatorMode,
                 onToggleRadiansMode = viewModel::toggleRadiansMode,
+                onToggleInverseTrigMode = viewModel::toggleInverseTrigMode,
                 onInputToken = viewModel::onCalculatorInput,
                 onInsertLastAnswer = viewModel::onInsertLastAnswer,
                 onClear = viewModel::onCalculatorClear,
                 onBackspace = viewModel::onCalculatorBackspace,
                 onEvaluate = viewModel::onCalculatorEvaluate,
-                onConvertDaysToSynodic = viewModel::convertCurrentValueToSynodicCycles,
-                onMultiplyBySynodic = viewModel::multiplyCurrentValueBySynodicCycle,
                 onUseHistoryItem = viewModel::useHistoryItem,
-                onClearHistory = viewModel::clearHistory,
-                onSelectBaseDate = viewModel::selectDate,
-                onSetUseLunarCycleOffset = viewModel::setUseLunarCycleOffset,
-                onUpdateOffsetDays = viewModel::updateDateOffsetDays,
-                onUpdateOffsetLunarCycles = viewModel::updateDateOffsetLunarCycles,
-                onStepComparisonDate = viewModel::stepComparisonEndDate,
-                onSetComparisonStartDate = viewModel::setComparisonStartDate,
-                onSetComparisonEndDate = viewModel::setComparisonEndDate,
-                onJumpToDateInCalendar = onJumpToDateInCalendar
+                onClearHistory = viewModel::clearHistory
             )
         }
     }
