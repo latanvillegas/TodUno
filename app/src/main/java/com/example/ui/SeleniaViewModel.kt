@@ -1,30 +1,38 @@
 package com.example.ui
 
+import android.content.Context
+import android.os.SystemClock
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import com.example.data.SeleniaPersistedSettings
+import com.example.data.SeleniaRepository
 import com.example.domain.CalculationRecord
 import com.example.domain.CalendarDayCell
-import com.example.domain.ColorHarmonyEngine
-import com.example.domain.ColorSwatchSpec
-import com.example.domain.GradientStyleType
+import com.example.domain.CelestialEvent
 import com.example.domain.LunarAstronomer
 import com.example.domain.LunarDayInfo
 import com.example.domain.MajorPhaseMilestone
 import com.example.domain.MoonPhaseType
 import com.example.domain.ScientificCalculatorEngine
 import com.example.domain.SimpleDate
+import com.example.notifications.SeleniaAlertManager
+import com.example.widget.SeleniaMoonWidgetProvider
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import java.util.Locale
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.roundToInt
 
 enum class AppDestination {
     CALENDAR,
     MOON_OBSERVATORY,
     CLOCK,
-    CALCULATOR,
-    COLORS
+    CALCULATOR
 }
 
 enum class ClockSubTab {
@@ -38,73 +46,31 @@ enum class CalculatorMode {
     DATE_AND_LUNAR
 }
 
-enum class ColorStudioSubTab {
-    CONVERTER_SLIDERS,
-    GRADIENTS_AND_MESH,
-    COMBINATIONS,
-    TONES_AND_SHADES,
-    COLOR_CATALOG
-}
-
-enum class ModuleThemeTarget(
-    val spanishTitle: String,
-    val shortBadge: String,
-    val emoji: String,
-    val howItAppliesDescription: String
-) {
-    ALL_MODULES(
-        spanishTitle = "Toda la App (Global)",
-        shortBadge = "Toda la App",
-        emoji = "🌐",
-        howItAppliesDescription = "Aplica el color y degradado simultáneamente a Calendario, Luna, Reloj y Calculadora."
-    ),
-    CALENDAR(
-        spanishTitle = "Calendario Lunar",
-        shortBadge = "Calendario",
-        emoji = "📅",
-        howItAppliesDescription = "Personaliza la cabecera del mes, el fondo de la ficha del día, los bordes de selección y los hitos lunares."
-    ),
-    MOON_OBSERVATORY(
-        spanishTitle = "Observatorio de la Luna",
-        shortBadge = "Luna",
-        emoji = "🌕",
-        howItAppliesDescription = "Tiñe la superficie iluminada de la Luna, su corona estelar, el fondo del observatorio y la barra sinódica."
-    ),
-    CLOCK(
-        spanishTitle = "Reloj, Cronómetro y Temporizador",
-        shortBadge = "Reloj",
-        emoji = "⌚",
-        howItAppliesDescription = "Personaliza el dial del reloj analógico, las agujas, los dígitos LED, el cronómetro y el anillo del temporizador."
-    ),
-    CALCULATOR(
-        spanishTitle = "Calculadora Científica y Fechas",
-        shortBadge = "Calculadora",
-        emoji = "🧮",
-        howItAppliesDescription = "Aplica el degradado al visor de resultados, la tecla '=' y los botones de operadores y funciones."
-    )
-}
-
-@Immutable
-data class ModuleVisualSkin(
-    val target: ModuleThemeTarget,
-    val primarySwatch: ColorSwatchSpec,
-    val secondarySwatch: ColorSwatchSpec,
-    val gradientStops: List<ColorSwatchSpec>,
-    val gradientStyle: GradientStyleType = GradientStyleType.MESH,
-    val gradientAngleDeg: Int = 135,
-    val focalX: Float = 0.5f,
-    val focalY: Float = 0.5f,
-    val radiusFactor: Float = 0.9f,
-    val isCustomApplied: Boolean = false
-)
-
 @Immutable
 data class CalendarNote(
     val id: Long,
     val date: SimpleDate,
     val title: String,
-    val category: String
+    val category: String,
+    val reminderEnabled: Boolean = false
 )
+
+@Immutable
+data class StopwatchLap(
+    val lapNumber: Int,
+    val lapDurationMs: Long,
+    val totalElapsedMs: Long
+)
+
+/**
+ * Returns monotonic milliseconds immune to NTP/manual wall-clock changes.
+ * Falls back cleanly to JVM [System.nanoTime] in local unit tests where Android's
+ * stubbed [SystemClock.elapsedRealtime] returns 0L.
+ */
+internal fun currentMonotonicMs(): Long {
+    val elapsed = runCatching { SystemClock.elapsedRealtime() }.getOrDefault(0L)
+    return if (elapsed > 0L) elapsed else (System.nanoTime() / 1_000_000L)
+}
 
 @Immutable
 data class SeleniaUiState(
@@ -114,52 +80,48 @@ data class SeleniaUiState(
     val displayYear: Int = LunarAstronomer.today().year,
     val displayMonth: Int = LunarAstronomer.today().month,
     val isNorthernHemisphere: Boolean = true,
+    val lunarAlertsEnabled: Boolean = false,
     val calendarCells: List<CalendarDayCell> = emptyList(),
     val monthMilestones: List<MajorPhaseMilestone> = emptyList(),
     val selectedDayLunarInfo: LunarDayInfo = LunarAstronomer.getLunarInfo(LunarAstronomer.today()),
     val upcomingMajorPhases: List<MajorPhaseMilestone> = emptyList(),
+    val upcomingCelestialEvents: List<CelestialEvent> = emptyList(),
     val notesByDate: Map<String, List<CalendarNote>> = emptyMap(),
 
-    // Clock State
+    // Clock & World Cities State
     val clockSubTab: ClockSubTab = ClockSubTab.WORLD_CLOCK,
     val is24HourFormat: Boolean = true,
+    val selectedWorldCityIds: List<String> = SeleniaPersistedSettings.DEFAULT_WORLD_CITY_IDS,
+
+    // Persistent Monotonic Stopwatch State (0 background ticks when off-screen!)
+    val stopwatchRunning: Boolean = false,
+    val stopwatchAccumulatedMs: Long = 0L,
+    val stopwatchLastStartMonoMs: Long = 0L,
+    val stopwatchLaps: List<StopwatchLap> = emptyList(),
+
+    // Persistent Monotonic Timer State (0 background ticks when off-screen!)
+    val timerTotalSeconds: Int = 300,
+    val timerRemainingPausedMs: Long = 300_000L,
+    val timerEndTargetMonoMs: Long = 0L,
+    val timerRunning: Boolean = false,
+    val timerFinishedAlert: Boolean = false,
 
     // Calculator State
     val calculatorMode: CalculatorMode = CalculatorMode.SCIENTIFIC,
+    val isRadiansMode: Boolean = false,
     val expression: String = "",
     val liveResultPreview: String = "0",
+    val lastAnswer: String = "0",
     val calculationHistory: List<CalculationRecord> = emptyList(),
 
     // Date & Lunar Cycle Calculator State
     val dateOffsetDays: Int = 29,
     val dateOffsetLunarCycles: Double = 1.0,
     val useLunarCycleOffset: Boolean = false,
-    val comparisonEndDate: SimpleDate = LunarAstronomer.addDays(LunarAstronomer.today(), 30),
-
-    // Color Studio & Gradients State
-    val colorStudioSubTab: ColorStudioSubTab = ColorStudioSubTab.CONVERTER_SLIDERS,
-    val activeColorSwatch: ColorSwatchSpec = ColorHarmonyEngine.fromRgb(245, 196, 81),
-    val gradientStyle: GradientStyleType = GradientStyleType.MESH,
-    val gradientAngleDeg: Int = 135,
-    val radialFocalX: Float = 0.5f,
-    val radialFocalY: Float = 0.5f,
-    val radialRadiusFactor: Float = 0.85f,
-    val gradientVariantIndex: Int = 0,
-    val customGradientPresetStops: List<ColorSwatchSpec>? = null,
-    val selectedThemeTarget: ModuleThemeTarget = ModuleThemeTarget.ALL_MODULES,
-    val moduleSkins: Map<ModuleThemeTarget, ModuleVisualSkin> = defaultModuleSkins(),
-    val savedColorSwatches: List<ColorSwatchSpec> = listOf(
-        ColorHarmonyEngine.fromRgb(245, 196, 81),  // Oro Lunar #F5C451
-        ColorHarmonyEngine.fromRgb(100, 210, 255), // Cian Celestial #64D2FF
-        ColorHarmonyEngine.fromRgb(92, 225, 166),  // Menta Aurora #5CE1A6
-        ColorHarmonyEngine.fromRgb(255, 122, 107), // Coral Eclipse #FF7A6B
-        ColorHarmonyEngine.fromRgb(138, 92, 246),  // Violeta Nebulosa #8A5CF6
-        ColorHarmonyEngine.fromRgb(236, 72, 153),  // Magenta Neón #EC4899
-        ColorHarmonyEngine.fromRgb(16, 185, 129),  // Esmeralda #10B981
-        ColorHarmonyEngine.fromRgb(28, 39, 82)     // Índigo Astrolabio #1C2752
-    )
+    val comparisonStartDate: SimpleDate = LunarAstronomer.today(),
+    val comparisonEndDate: SimpleDate = LunarAstronomer.addDays(LunarAstronomer.today(), 30)
 ) {
-    val computedTargetDate: SimpleDate by lazy(LazyThreadSafetyMode.NONE) {
+    val computedTargetDate: SimpleDate by lazy(LazyThreadSafetyMode.PUBLICATION) {
         val totalOffset = if (useLunarCycleOffset) {
             (dateOffsetLunarCycles * LunarAstronomer.SYNODIC_MONTH_DAYS).roundToInt()
         } else {
@@ -168,90 +130,87 @@ data class SeleniaUiState(
         LunarAstronomer.addDays(selectedDate, totalOffset)
     }
 
-    val computedTargetLunarInfo: LunarDayInfo by lazy(LazyThreadSafetyMode.NONE) {
+    val computedTargetLunarInfo: LunarDayInfo by lazy(LazyThreadSafetyMode.PUBLICATION) {
         LunarAstronomer.getLunarInfo(computedTargetDate)
     }
 
-    val daysBetweenSelectedAndComparison: Int by lazy(LazyThreadSafetyMode.NONE) {
-        LunarAstronomer.daysBetween(selectedDate, comparisonEndDate)
+    val daysBetweenSelectedAndComparison: Int by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        LunarAstronomer.daysBetween(comparisonStartDate, comparisonEndDate)
     }
 
     val synodicCyclesBetweenSelectedAndComparison: Double
         get() = daysBetweenSelectedAndComparison / LunarAstronomer.SYNODIC_MONTH_DAYS
 
-    val activeGradientStops: List<ColorSwatchSpec> by lazy(LazyThreadSafetyMode.NONE) {
-        customGradientPresetStops
-            ?: ColorHarmonyEngine.buildDynamicGradientStops(activeColorSwatch, gradientVariantIndex)
-    }
-
-    private val colorStudioPreviewSkin: ModuleVisualSkin by lazy(LazyThreadSafetyMode.NONE) {
-        ModuleVisualSkin(
-            target = ModuleThemeTarget.ALL_MODULES,
-            primarySwatch = activeColorSwatch,
-            secondarySwatch = activeGradientStops.getOrElse(2) { activeColorSwatch },
-            gradientStops = activeGradientStops,
-            gradientStyle = gradientStyle,
-            gradientAngleDeg = gradientAngleDeg,
-            focalX = radialFocalX,
-            focalY = radialFocalY,
-            radiusFactor = radialRadiusFactor,
-            isCustomApplied = true
-        )
-    }
-
-    fun skinFor(target: ModuleThemeTarget): ModuleVisualSkin {
-        return moduleSkins[target] ?: defaultSkinForTarget(target)
-    }
-
-    fun skinForDestination(destination: AppDestination): ModuleVisualSkin {
-        return when (destination) {
-            AppDestination.CALENDAR -> skinFor(ModuleThemeTarget.CALENDAR)
-            AppDestination.MOON_OBSERVATORY -> skinFor(ModuleThemeTarget.MOON_OBSERVATORY)
-            AppDestination.CLOCK -> skinFor(ModuleThemeTarget.CLOCK)
-            AppDestination.CALCULATOR -> skinFor(ModuleThemeTarget.CALCULATOR)
-            AppDestination.COLORS -> colorStudioPreviewSkin
+    fun computeStopwatchElapsedMs(nowMonoMs: Long = currentMonotonicMs()): Long {
+        return if (stopwatchRunning) {
+            stopwatchAccumulatedMs + (nowMonoMs - stopwatchLastStartMonoMs).coerceAtLeast(0L)
+        } else {
+            stopwatchAccumulatedMs
         }
     }
 
-    companion object {
-        private val DEFAULT_PRIMARY = ColorHarmonyEngine.fromRgb(245, 196, 81)
-        private val DEFAULT_SECONDARY = ColorHarmonyEngine.fromRgb(100, 210, 255)
-        private val DEFAULT_STOPS = ColorHarmonyEngine.buildDynamicGradientStops(DEFAULT_PRIMARY, 0)
-        private val DEFAULT_SKINS_BY_TARGET: Map<ModuleThemeTarget, ModuleVisualSkin> =
-            ModuleThemeTarget.entries.associateWith { target ->
-                ModuleVisualSkin(
-                    target = target,
-                    primarySwatch = DEFAULT_PRIMARY,
-                    secondarySwatch = DEFAULT_SECONDARY,
-                    gradientStops = DEFAULT_STOPS,
-                    gradientStyle = GradientStyleType.MESH,
-                    gradientAngleDeg = 135,
-                    isCustomApplied = false
-                )
-            }
-
-        private val DEFAULT_MODULE_SKINS: Map<ModuleThemeTarget, ModuleVisualSkin> = listOf(
-            ModuleThemeTarget.CALENDAR,
-            ModuleThemeTarget.MOON_OBSERVATORY,
-            ModuleThemeTarget.CLOCK,
-            ModuleThemeTarget.CALCULATOR
-        ).associateWith { DEFAULT_SKINS_BY_TARGET.getValue(it) }
-
-        fun defaultSkinForTarget(target: ModuleThemeTarget): ModuleVisualSkin {
-            return DEFAULT_SKINS_BY_TARGET.getValue(target)
-        }
-
-        fun defaultModuleSkins(): Map<ModuleThemeTarget, ModuleVisualSkin> {
-            return DEFAULT_MODULE_SKINS
+    fun computeTimerRemainingMs(nowMonoMs: Long = currentMonotonicMs()): Long {
+        return if (timerRunning) {
+            (timerEndTargetMonoMs - nowMonoMs).coerceAtLeast(0L)
+        } else {
+            timerRemainingPausedMs
         }
     }
 }
 
-class SeleniaViewModel : ViewModel() {
+class SeleniaViewModel(
+    private val repository: SeleniaRepository? = null,
+    appContext: Context? = null
+) : ViewModel() {
 
-    private val idCounter = java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis())
+    private val appContext: Context? = appContext?.applicationContext
+    private val idCounter = AtomicLong(System.currentTimeMillis())
     private val _uiState = MutableStateFlow(createInitialState())
     val uiState: StateFlow<SeleniaUiState> = _uiState.asStateFlow()
+
+    init {
+        if (repository != null) {
+            viewModelScope.launch {
+                repository.ensureSeeded()
+            }
+            viewModelScope.launch {
+                repository.notesByDateFlow.collect { persistedNotes ->
+                    _uiState.update { it.copy(notesByDate = persistedNotes) }
+                }
+            }
+            viewModelScope.launch {
+                repository.calculationHistoryFlow.collect { history ->
+                    _uiState.update { current ->
+                        current.copy(
+                            calculationHistory = history,
+                            lastAnswer = history.firstOrNull()?.result ?: current.lastAnswer
+                        )
+                    }
+                }
+            }
+            viewModelScope.launch {
+                repository.settingsFlow.collect { settings ->
+                    _uiState.update { current ->
+                        val preview = if (current.expression.isBlank()) {
+                            current.liveResultPreview
+                        } else {
+                            ScientificCalculatorEngine.evaluate(current.expression, settings.isRadiansMode)
+                                .map { ScientificCalculatorEngine.formatNumber(it) }
+                                .getOrDefault(current.liveResultPreview)
+                        }
+                        current.copy(
+                            isNorthernHemisphere = settings.isNorthernHemisphere,
+                            is24HourFormat = settings.is24HourFormat,
+                            isRadiansMode = settings.isRadiansMode,
+                            lunarAlertsEnabled = settings.lunarAlertsEnabled,
+                            selectedWorldCityIds = settings.selectedWorldCityIds,
+                            liveResultPreview = preview
+                        )
+                    }
+                }
+            }
+        }
+    }
 
     private fun createInitialState(): SeleniaUiState {
         val today = LunarAstronomer.today()
@@ -259,6 +218,7 @@ class SeleniaViewModel : ViewModel() {
         val milestones = LunarAstronomer.getMonthMajorMilestones(today.year, today.month)
         val lunarInfo = LunarAstronomer.getLunarInfo(today)
         val upcoming = LunarAstronomer.getUpcomingMajorPhases(today, count = 4)
+        val celestialEvents = LunarAstronomer.getUpcomingCelestialEvents(today, count = 6)
 
         val initialNotes = mutableMapOf<String, List<CalendarNote>>()
         upcoming.firstOrNull { it.phaseType == MoonPhaseType.FULL_MOON }?.let { fullMoon ->
@@ -279,7 +239,7 @@ class SeleniaViewModel : ViewModel() {
                     id = 2L,
                     date = newMoon.date,
                     title = "Noche sin luna: ideal para cielo profundo",
-                    category = "Observatorio"
+                    category = "Astronomía"
                 )
             )
         }
@@ -308,186 +268,273 @@ class SeleniaViewModel : ViewModel() {
             monthMilestones = milestones,
             selectedDayLunarInfo = lunarInfo,
             upcomingMajorPhases = upcoming,
+            upcomingCelestialEvents = celestialEvents,
             notesByDate = initialNotes,
-            calculationHistory = initialHistory
+            calculationHistory = initialHistory,
+            lastAnswer = initialHistory.first().result
         )
     }
 
+    /**
+     * Called on Activity ON_RESUME:
+     * 1. Detects midnight calendar rollover if the app remained in memory overnight.
+     * 2. Reconciles timer completion if a background countdown finished while stopped.
+     */
+    fun onAppResumed() {
+        val currentToday = LunarAstronomer.today()
+        val nowMono = currentMonotonicMs()
+        var dayChanged = false
+
+        _uiState.update { current ->
+            var next = current
+            if (current.today != currentToday) {
+                dayChanged = true
+                val wasSelectedOnOldToday = current.selectedDate == current.today
+                val nextSelected = if (wasSelectedOnOldToday) currentToday else current.selectedDate
+                next = next.copy(
+                    today = currentToday,
+                    selectedDate = nextSelected,
+                    calendarCells = LunarAstronomer.getMonthGrid(next.displayYear, next.displayMonth, currentToday),
+                    selectedDayLunarInfo = LunarAstronomer.getLunarInfo(nextSelected),
+                    upcomingMajorPhases = LunarAstronomer.getUpcomingMajorPhases(nextSelected, count = 4),
+                    upcomingCelestialEvents = LunarAstronomer.getUpcomingCelestialEvents(nextSelected, count = 6)
+                )
+            }
+            if (next.timerRunning && nowMono >= next.timerEndTargetMonoMs) {
+                next = next.copy(
+                    timerRunning = false,
+                    timerRemainingPausedMs = 0L,
+                    timerFinishedAlert = true
+                )
+            }
+            next
+        }
+
+        if (dayChanged) {
+            appContext?.let { SeleniaMoonWidgetProvider.refreshAllWidgets(it) }
+        }
+    }
+
     fun navigateTo(destination: AppDestination) {
-        _uiState.update { it.copy(currentDestination = destination) }
-    }
-
-    fun openColorCustomizerForModule(target: ModuleThemeTarget) {
         _uiState.update { current ->
-            val existingSkin = if (target == ModuleThemeTarget.ALL_MODULES) {
-                current.skinFor(ModuleThemeTarget.CALENDAR)
-            } else {
-                current.skinFor(target)
-            }
-            current.copy(
-                currentDestination = AppDestination.COLORS,
-                selectedThemeTarget = target,
-                activeColorSwatch = existingSkin.primarySwatch
-            )
-        }
-    }
-
-    fun selectThemeTarget(target: ModuleThemeTarget) {
-        _uiState.update { it.copy(selectedThemeTarget = target) }
-    }
-
-    fun applyActiveColorAndGradientToTarget(target: ModuleThemeTarget = _uiState.value.selectedThemeTarget) {
-        _uiState.update { current ->
-            val stops = current.activeGradientStops
-            val primary = current.activeColorSwatch
-            val secondary = stops.getOrElse(2) {
-                ColorHarmonyEngine.fromHsl(primary.hsl.h + 150f, primary.hsl.s.coerceAtLeast(60f), 65f)
-            }
-
-            fun createSkinFor(t: ModuleThemeTarget) = ModuleVisualSkin(
-                target = t,
-                primarySwatch = primary,
-                secondarySwatch = secondary,
-                gradientStops = stops,
-                gradientStyle = current.gradientStyle,
-                gradientAngleDeg = current.gradientAngleDeg,
-                focalX = current.radialFocalX,
-                focalY = current.radialFocalY,
-                radiusFactor = current.radialRadiusFactor,
-                isCustomApplied = true
-            )
-
-            val updatedSkins = current.moduleSkins.toMutableMap()
-            if (target == ModuleThemeTarget.ALL_MODULES) {
-                listOf(
-                    ModuleThemeTarget.CALENDAR,
-                    ModuleThemeTarget.MOON_OBSERVATORY,
-                    ModuleThemeTarget.CLOCK,
-                    ModuleThemeTarget.CALCULATOR
-                ).forEach { moduleTarget ->
-                    updatedSkins[moduleTarget] = createSkinFor(moduleTarget)
-                }
-            } else {
-                updatedSkins[target] = createSkinFor(target)
-            }
-
-            current.copy(
-                selectedThemeTarget = target,
-                moduleSkins = updatedSkins
-            )
-        }
-    }
-
-    fun resetSkinForTarget(target: ModuleThemeTarget = _uiState.value.selectedThemeTarget) {
-        _uiState.update { current ->
-            val updatedSkins = if (target == ModuleThemeTarget.ALL_MODULES) {
-                SeleniaUiState.defaultModuleSkins()
-            } else {
-                current.moduleSkins + (target to SeleniaUiState.defaultSkinForTarget(target))
-            }
-            current.copy(moduleSkins = updatedSkins)
+            if (current.currentDestination == destination) current
+            else current.copy(currentDestination = destination)
         }
     }
 
     fun selectClockSubTab(subTab: ClockSubTab) {
-        _uiState.update { it.copy(clockSubTab = subTab) }
+        _uiState.update { current ->
+            if (current.clockSubTab == subTab) current
+            else current.copy(clockSubTab = subTab)
+        }
     }
 
     fun toggle24HourFormat() {
-        _uiState.update { it.copy(is24HourFormat = !it.is24HourFormat) }
-    }
-
-    fun selectColorStudioSubTab(subTab: ColorStudioSubTab) {
-        _uiState.update { it.copy(colorStudioSubTab = subTab) }
-    }
-
-    fun updateColorFromRgb(r: Int, g: Int, b: Int) {
-        _uiState.update {
-            it.copy(
-                activeColorSwatch = ColorHarmonyEngine.fromRgb(r, g, b),
-                customGradientPresetStops = null
-            )
+        val next = !_uiState.value.is24HourFormat
+        _uiState.update { it.copy(is24HourFormat = next) }
+        if (repository != null) {
+            viewModelScope.launch { repository.set24HourFormat(next) }
         }
     }
 
-    fun updateColorFromHsl(h: Float, s: Float, l: Float) {
-        _uiState.update {
-            it.copy(
-                activeColorSwatch = ColorHarmonyEngine.fromHsl(h, s, l),
-                customGradientPresetStops = null
-            )
-        }
-    }
-
-    fun updateColorFromCmyk(c: Int, m: Int, y: Int, k: Int) {
-        _uiState.update {
-            it.copy(
-                activeColorSwatch = ColorHarmonyEngine.fromCmyk(c, m, y, k),
-                customGradientPresetStops = null
-            )
-        }
-    }
-
-    fun updateColorFromHex(hexInput: String) {
-        val parsed = ColorHarmonyEngine.parseHexToRgb(hexInput) ?: return
-        _uiState.update {
-            it.copy(
-                activeColorSwatch = ColorHarmonyEngine.fromRgb(parsed.r, parsed.g, parsed.b),
-                customGradientPresetStops = null
-            )
-        }
-    }
-
-    fun setGradientStyle(style: GradientStyleType) {
-        _uiState.update { it.copy(gradientStyle = style) }
-    }
-
-    fun setGradientAngle(angleDeg: Int) {
-        _uiState.update { it.copy(gradientAngleDeg = angleDeg.coerceIn(0, 360)) }
-    }
-
-    fun setRadialFocalAndRadius(focalX: Float, focalY: Float, radiusFactor: Float) {
-        _uiState.update {
-            it.copy(
-                radialFocalX = focalX.coerceIn(0.1f, 0.9f),
-                radialFocalY = focalY.coerceIn(0.1f, 0.9f),
-                radialRadiusFactor = radiusFactor.coerceIn(0.3f, 1.6f)
-            )
-        }
-    }
-
-    fun cycleGradientHarmonyVariant() {
-        _uiState.update {
-            it.copy(
-                gradientVariantIndex = (it.gradientVariantIndex + 1) % 5,
-                customGradientPresetStops = null
-            )
-        }
-    }
-
-    fun applyGradientPreset(stops: List<ColorSwatchSpec>) {
-        if (stops.isEmpty()) return
-        _uiState.update {
-            it.copy(
-                activeColorSwatch = stops.first(),
-                customGradientPresetStops = stops
-            )
-        }
-    }
-
-    fun saveFavoriteColor() {
+    fun toggleWorldCity(timeZoneId: String) {
+        var updatedIds: List<String> = emptyList()
         _uiState.update { current ->
-            val active = current.activeColorSwatch
-            if (current.savedColorSwatches.any { it.hex == active.hex }) {
-                current
+            val next = if (timeZoneId in current.selectedWorldCityIds) {
+                if (current.selectedWorldCityIds.size > 1) {
+                    current.selectedWorldCityIds - timeZoneId
+                } else {
+                    current.selectedWorldCityIds
+                }
             } else {
-                current.copy(savedColorSwatches = listOf(active) + current.savedColorSwatches.take(15))
+                (current.selectedWorldCityIds + timeZoneId).distinct()
+            }
+            updatedIds = next
+            current.copy(selectedWorldCityIds = next)
+        }
+        if (repository != null && updatedIds.isNotEmpty()) {
+            viewModelScope.launch { repository.setSelectedWorldCityIds(updatedIds) }
+        }
+    }
+
+    // --- Stopwatch Actions (Monotonic & Zero-Tick in ViewModel) ---
+
+    fun toggleStopwatch() {
+        val nowMono = currentMonotonicMs()
+        _uiState.update { current ->
+            if (current.stopwatchRunning) {
+                val total = current.stopwatchAccumulatedMs +
+                    (nowMono - current.stopwatchLastStartMonoMs).coerceAtLeast(0L)
+                current.copy(
+                    stopwatchRunning = false,
+                    stopwatchAccumulatedMs = total
+                )
+            } else {
+                current.copy(
+                    stopwatchRunning = true,
+                    stopwatchLastStartMonoMs = nowMono
+                )
             }
         }
     }
 
+    fun lapStopwatch() {
+        val nowMono = currentMonotonicMs()
+        _uiState.update { current ->
+            val currentTotal = current.computeStopwatchElapsedMs(nowMono)
+            if (currentTotal <= 0L) return@update current
+            val previousTotal = current.stopwatchLaps.firstOrNull()?.totalElapsedMs ?: 0L
+            val lapDiff = (currentTotal - previousTotal).coerceAtLeast(0L)
+            val nextLapNumber = (current.stopwatchLaps.firstOrNull()?.lapNumber ?: 0) + 1
+            val newLap = StopwatchLap(
+                lapNumber = nextLapNumber,
+                lapDurationMs = lapDiff,
+                totalElapsedMs = currentTotal
+            )
+            current.copy(
+                stopwatchLaps = (listOf(newLap) + current.stopwatchLaps).take(200)
+            )
+        }
+    }
+
+    fun resetStopwatch() {
+        _uiState.update { current ->
+            current.copy(
+                stopwatchRunning = false,
+                stopwatchAccumulatedMs = 0L,
+                stopwatchLastStartMonoMs = 0L,
+                stopwatchLaps = emptyList()
+            )
+        }
+    }
+
+    // --- Timer Actions (Monotonic & Zero-Tick in ViewModel) ---
+
+    fun selectTimerPresetSeconds(seconds: Int) {
+        val clamped = seconds.coerceIn(10, 7200)
+        appContext?.let { SeleniaAlertManager.cancelBackgroundTimerAlert(it) }
+        _uiState.update { current ->
+            current.copy(
+                timerRunning = false,
+                timerFinishedAlert = false,
+                timerTotalSeconds = clamped,
+                timerRemainingPausedMs = clamped * 1000L,
+                timerEndTargetMonoMs = 0L
+            )
+        }
+    }
+
+    fun adjustTimerSeconds(deltaSec: Int) {
+        val nowMono = currentMonotonicMs()
+        var scheduleRemainingMs: Long? = null
+        var scheduleTotalSec = 0
+
+        _uiState.update { current ->
+            val nextSec = (current.timerTotalSeconds + deltaSec).coerceIn(10, 7200)
+            scheduleTotalSec = nextSec
+            if (!current.timerRunning) {
+                current.copy(
+                    timerTotalSeconds = nextSec,
+                    timerFinishedAlert = false,
+                    timerRemainingPausedMs = nextSec * 1000L
+                )
+            } else {
+                val adjustedEnd = (current.timerEndTargetMonoMs + deltaSec * 1000L)
+                    .coerceAtLeast(nowMono + 1_000L)
+                scheduleRemainingMs = adjustedEnd - nowMono
+                current.copy(
+                    timerTotalSeconds = nextSec,
+                    timerEndTargetMonoMs = adjustedEnd
+                )
+            }
+        }
+
+        val rem = scheduleRemainingMs
+        if (rem != null && appContext != null) {
+            SeleniaAlertManager.scheduleBackgroundTimerAlert(appContext, rem, scheduleTotalSec)
+        }
+    }
+
+    fun toggleTimerStartPause() {
+        val nowMono = currentMonotonicMs()
+        var scheduleRemainingMs: Long? = null
+        var scheduleTotalSec = 0
+        var shouldCancel = false
+
+        _uiState.update { current ->
+            if (current.timerRunning) {
+                shouldCancel = true
+                val remaining = (current.timerEndTargetMonoMs - nowMono).coerceAtLeast(0L)
+                current.copy(
+                    timerRunning = false,
+                    timerFinishedAlert = false,
+                    timerRemainingPausedMs = remaining
+                )
+            } else {
+                val durationMs = if (current.timerRemainingPausedMs <= 0L) {
+                    current.timerTotalSeconds * 1000L
+                } else {
+                    current.timerRemainingPausedMs
+                }
+                scheduleRemainingMs = durationMs
+                scheduleTotalSec = current.timerTotalSeconds
+                current.copy(
+                    timerRunning = true,
+                    timerFinishedAlert = false,
+                    timerRemainingPausedMs = durationMs,
+                    timerEndTargetMonoMs = nowMono + durationMs
+                )
+            }
+        }
+
+        if (shouldCancel) {
+            appContext?.let { SeleniaAlertManager.cancelBackgroundTimerAlert(it) }
+        } else {
+            val rem = scheduleRemainingMs
+            if (rem != null && appContext != null) {
+                SeleniaAlertManager.scheduleBackgroundTimerAlert(appContext, rem, scheduleTotalSec)
+            }
+        }
+    }
+
+    fun resetTimer() {
+        appContext?.let { SeleniaAlertManager.cancelBackgroundTimerAlert(it) }
+        _uiState.update { current ->
+            current.copy(
+                timerRunning = false,
+                timerFinishedAlert = false,
+                timerRemainingPausedMs = current.timerTotalSeconds * 1000L,
+                timerEndTargetMonoMs = 0L
+            )
+        }
+    }
+
+    fun onForegroundTimerReachedZero() {
+        var didTransitionToFinished = false
+        _uiState.update { current ->
+            if (!current.timerRunning) return@update current
+            didTransitionToFinished = true
+            current.copy(
+                timerRunning = false,
+                timerRemainingPausedMs = 0L,
+                timerFinishedAlert = true
+            )
+        }
+        if (didTransitionToFinished) {
+            appContext?.let { SeleniaAlertManager.triggerTimerFinishedFeedback(it) }
+        }
+    }
+
+    // --- Calendar & Lunar Navigation ---
+
     fun selectDate(date: SimpleDate) {
         _uiState.update { current ->
+            if (date == current.selectedDate &&
+                date.year == current.displayYear &&
+                date.month == current.displayMonth
+            ) {
+                return@update current
+            }
             val needMonthRefresh = date.year != current.displayYear || date.month != current.displayMonth
             val newCells = if (needMonthRefresh) {
                 LunarAstronomer.getMonthGrid(date.year, date.month, current.today)
@@ -499,6 +546,20 @@ class SeleniaViewModel : ViewModel() {
             } else {
                 current.monthMilestones
             }
+            // Reuse celestial events if start date is still before the earliest cached celestial event
+            // and within the same month, avoiding redundant list rebuilds on single-day taps!
+            val firstCachedEventDate = current.upcomingCelestialEvents.firstOrNull()?.date
+            val newCelestialEvents = if (
+                !needMonthRefresh &&
+                firstCachedEventDate != null &&
+                date <= firstCachedEventDate &&
+                date >= current.selectedDate
+            ) {
+                current.upcomingCelestialEvents
+            } else {
+                LunarAstronomer.getUpcomingCelestialEvents(date, count = 6)
+            }
+
             current.copy(
                 selectedDate = date,
                 displayYear = date.year,
@@ -506,7 +567,8 @@ class SeleniaViewModel : ViewModel() {
                 calendarCells = newCells,
                 monthMilestones = newMilestones,
                 selectedDayLunarInfo = LunarAstronomer.getLunarInfo(date),
-                upcomingMajorPhases = LunarAstronomer.getUpcomingMajorPhases(date, count = 4)
+                upcomingMajorPhases = LunarAstronomer.getUpcomingMajorPhases(date, count = 4),
+                upcomingCelestialEvents = newCelestialEvents
             )
         }
     }
@@ -518,6 +580,14 @@ class SeleniaViewModel : ViewModel() {
 
     fun jumpToToday() {
         selectDate(LunarAstronomer.today())
+    }
+
+    fun jumpToYearMonth(year: Int, month: Int) {
+        val safeYear = year.coerceIn(1900, 2150)
+        val safeMonth = month.coerceIn(1, 12)
+        val currentDay = _uiState.value.selectedDate.day
+        val clampedDay = currentDay.coerceAtMost(LunarAstronomer.daysInMonth(safeYear, safeMonth))
+        selectDate(SimpleDate(safeYear, safeMonth, clampedDay))
     }
 
     fun changeMonth(deltaMonths: Int) {
@@ -532,6 +602,7 @@ class SeleniaViewModel : ViewModel() {
                 targetMonth += 12
                 targetYear -= 1
             }
+            targetYear = targetYear.coerceIn(1900, 2150)
             val newCells = LunarAstronomer.getMonthGrid(targetYear, targetMonth, current.today)
             val newMilestones = LunarAstronomer.getMonthMajorMilestones(targetYear, targetMonth)
             current.copy(
@@ -544,46 +615,141 @@ class SeleniaViewModel : ViewModel() {
     }
 
     fun toggleHemisphere() {
-        _uiState.update { it.copy(isNorthernHemisphere = !it.isNorthernHemisphere) }
+        val next = !_uiState.value.isNorthernHemisphere
+        _uiState.update { it.copy(isNorthernHemisphere = next) }
+        if (repository != null) {
+            viewModelScope.launch { repository.setNorthernHemisphere(next) }
+        }
+        appContext?.let { SeleniaMoonWidgetProvider.refreshAllWidgets(it) }
     }
 
-    fun addNoteForSelectedDate(title: String, category: String) {
-        val cleanTitle = title.trim()
+    fun setLunarAlertsEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(lunarAlertsEnabled = enabled) }
+        if (repository != null) {
+            viewModelScope.launch { repository.setLunarAlertsEnabled(enabled) }
+        }
+        appContext?.let { SeleniaAlertManager.syncUpcomingLunarPhaseAlerts(it, enabled) }
+    }
+
+    fun addNoteForSelectedDate(
+        title: String,
+        category: String,
+        reminderEnabled: Boolean = false
+    ) {
+        val cleanTitle = title.trim().take(240)
         if (cleanTitle.isEmpty()) return
-        _uiState.update { current ->
-            val key = current.selectedDate.toStorageKey()
-            val existing = current.notesByDate[key].orEmpty()
-            val newNote = CalendarNote(
-                id = idCounter.incrementAndGet(),
-                date = current.selectedDate,
-                title = cleanTitle,
-                category = category.ifBlank { "Nota" }
-            )
-            current.copy(
-                notesByDate = current.notesByDate + (key to (existing + newNote))
-            )
+        val cleanCategory = category.trim().ifBlank { "Nota" }.take(48)
+        val targetDate = _uiState.value.selectedDate
+        val key = targetDate.toStorageKey()
+        val alreadyExists = _uiState.value.notesByDate[key].orEmpty().any {
+            it.title.equals(cleanTitle, ignoreCase = true) &&
+                it.category.equals(cleanCategory, ignoreCase = true)
+        }
+        if (alreadyExists) return
+
+        if (repository != null) {
+            viewModelScope.launch {
+                val insertedId = repository.insertNote(
+                    date = targetDate,
+                    title = cleanTitle,
+                    category = cleanCategory,
+                    reminderEnabled = reminderEnabled
+                )
+                if (reminderEnabled && appContext != null) {
+                    SeleniaAlertManager.scheduleNoteReminder(
+                        context = appContext,
+                        noteId = insertedId,
+                        date = targetDate,
+                        title = cleanTitle,
+                        category = cleanCategory
+                    )
+                }
+            }
+        } else {
+            _uiState.update { current ->
+                val existing = current.notesByDate[key].orEmpty()
+                if (existing.any {
+                        it.title.equals(cleanTitle, ignoreCase = true) &&
+                            it.category.equals(cleanCategory, ignoreCase = true)
+                    }
+                ) {
+                    return@update current
+                }
+                val newNote = CalendarNote(
+                    id = idCounter.incrementAndGet(),
+                    date = targetDate,
+                    title = cleanTitle,
+                    category = cleanCategory,
+                    reminderEnabled = reminderEnabled
+                )
+                current.copy(
+                    notesByDate = current.notesByDate + (key to (existing + newNote))
+                )
+            }
         }
     }
 
     fun deleteNote(date: SimpleDate, noteId: Long) {
-        _uiState.update { current ->
-            val key = date.toStorageKey()
-            val updated = current.notesByDate[key].orEmpty().filterNot { it.id == noteId }
-            current.copy(
-                notesByDate = current.notesByDate + (key to updated)
-            )
+        appContext?.let { SeleniaAlertManager.cancelNoteReminder(it, noteId) }
+        if (repository != null) {
+            viewModelScope.launch { repository.deleteNote(noteId) }
+        } else {
+            _uiState.update { current ->
+                val key = date.toStorageKey()
+                val updated = current.notesByDate[key].orEmpty().filterNot { it.id == noteId }
+                current.copy(
+                    notesByDate = current.notesByDate + (key to updated)
+                )
+            }
         }
     }
 
-    // Calculator Actions
+    // --- Calculator Actions ---
+
     fun setCalculatorMode(mode: CalculatorMode) {
-        _uiState.update { it.copy(calculatorMode = mode) }
+        _uiState.update { current ->
+            if (current.calculatorMode == mode) current else current.copy(calculatorMode = mode)
+        }
+    }
+
+    fun toggleRadiansMode() {
+        val nextRad = !_uiState.value.isRadiansMode
+        _uiState.update { current ->
+            val preview = if (current.expression.isBlank()) {
+                "0"
+            } else {
+                ScientificCalculatorEngine.evaluate(current.expression, nextRad)
+                    .map { ScientificCalculatorEngine.formatNumber(it) }
+                    .getOrDefault(current.liveResultPreview)
+            }
+            current.copy(
+                isRadiansMode = nextRad,
+                liveResultPreview = preview
+            )
+        }
+        if (repository != null) {
+            viewModelScope.launch { repository.setRadiansMode(nextRad) }
+        }
     }
 
     fun onCalculatorInput(token: String) {
+        if (token.isEmpty()) return
         _uiState.update { current ->
-            val newExpr = current.expression + token
-            val preview = ScientificCalculatorEngine.evaluate(newExpr)
+            val base = if (current.expression == "Error") "" else current.expression
+            if (base.length + token.length > ScientificCalculatorEngine.MAX_EXPRESSION_LENGTH) {
+                return@update current
+            }
+
+            val isBinaryOp = token in BINARY_OPERATORS
+            val newExpr = when {
+                base.isEmpty() && (token == "×" || token == "÷" || token == "^") ->
+                    "${current.lastAnswer.takeIf { it != "Error" } ?: "0"}$token"
+                isBinaryOp && base.isNotEmpty() && base.last().toString() in BINARY_OPERATORS ->
+                    base.dropLast(1) + token
+                else -> base + token
+            }
+
+            val preview = ScientificCalculatorEngine.evaluate(newExpr, current.isRadiansMode)
                 .map { ScientificCalculatorEngine.formatNumber(it) }
                 .getOrDefault(current.liveResultPreview)
             current.copy(
@@ -591,6 +757,11 @@ class SeleniaViewModel : ViewModel() {
                 liveResultPreview = preview
             )
         }
+    }
+
+    fun onInsertLastAnswer() {
+        val ans = _uiState.value.lastAnswer.takeIf { it.isNotBlank() && it != "Error" } ?: return
+        onCalculatorInput(ans)
     }
 
     fun onCalculatorClear() {
@@ -601,15 +772,11 @@ class SeleniaViewModel : ViewModel() {
 
     fun onCalculatorBackspace() {
         _uiState.update { current ->
-            val newExpr = if (current.expression.isNotEmpty()) {
-                current.expression.dropLast(1)
-            } else {
-                ""
-            }
+            val newExpr = ScientificCalculatorEngine.smartBackspace(current.expression)
             val preview = if (newExpr.isEmpty()) {
                 "0"
             } else {
-                ScientificCalculatorEngine.evaluate(newExpr)
+                ScientificCalculatorEngine.evaluate(newExpr, current.isRadiansMode)
                     .map { ScientificCalculatorEngine.formatNumber(it) }
                     .getOrDefault(current.liveResultPreview)
             }
@@ -621,73 +788,141 @@ class SeleniaViewModel : ViewModel() {
     }
 
     fun onCalculatorEvaluate(customBadge: String? = null) {
+        var recordToPersist: Triple<String, String, String?>? = null
         _uiState.update { current ->
-            if (current.expression.isBlank()) return@update current
-            val evalResult = ScientificCalculatorEngine.evaluate(current.expression)
+            val trimmedExpr = current.expression.trim()
+            if (trimmedExpr.isEmpty()) return@update current
+            val evalResult = ScientificCalculatorEngine.evaluate(trimmedExpr, current.isRadiansMode)
             evalResult.fold(
                 onSuccess = { num ->
                     val formatted = ScientificCalculatorEngine.formatNumber(num)
-                    val record = CalculationRecord(
-                        id = idCounter.incrementAndGet(),
-                        expression = current.expression,
-                        result = formatted,
-                        badgeLabel = customBadge
-                    )
-                    current.copy(
-                        expression = formatted,
-                        liveResultPreview = formatted,
-                        calculationHistory = listOf(record) + current.calculationHistory.take(19)
-                    )
+                    // Avoid inserting trivial "123 = 123" or exact duplicate of top history item
+                    val topRecord = current.calculationHistory.firstOrNull()
+                    val isTrivialIdentity = customBadge == null && trimmedExpr == formatted
+                    val isConsecutiveDuplicate = topRecord != null &&
+                        topRecord.expression == trimmedExpr &&
+                        topRecord.result == formatted
+
+                    if (isTrivialIdentity || isConsecutiveDuplicate) {
+                        current.copy(
+                            expression = formatted,
+                            liveResultPreview = formatted,
+                            lastAnswer = formatted
+                        )
+                    } else {
+                        val modeTag = customBadge ?: if (current.isRadiansMode &&
+                            (trimmedExpr.contains("sin") || trimmedExpr.contains("cos") || trimmedExpr.contains("tan"))
+                        ) {
+                            "Modo RAD"
+                        } else {
+                            null
+                        }
+                        recordToPersist = Triple(trimmedExpr, formatted, modeTag)
+                        val record = CalculationRecord(
+                            id = idCounter.incrementAndGet(),
+                            expression = trimmedExpr,
+                            result = formatted,
+                            badgeLabel = modeTag
+                        )
+                        current.copy(
+                            expression = formatted,
+                            liveResultPreview = formatted,
+                            lastAnswer = formatted,
+                            calculationHistory = listOf(record) + current.calculationHistory.take(29)
+                        )
+                    }
                 },
                 onFailure = {
                     current.copy(liveResultPreview = "Error")
                 }
             )
         }
+        val persisted = recordToPersist
+        if (repository != null && persisted != null) {
+            viewModelScope.launch {
+                repository.insertCalculation(persisted.first, persisted.second, persisted.third)
+            }
+        }
     }
 
     fun convertCurrentValueToSynodicCycles() {
+        var recordToPersist: Triple<String, String, String?>? = null
         _uiState.update { current ->
             val baseExpr = current.expression.ifBlank { current.liveResultPreview }
-            val currentVal = ScientificCalculatorEngine.evaluate(baseExpr).getOrNull() ?: return@update current
+            val currentVal = ScientificCalculatorEngine.evaluate(baseExpr, current.isRadiansMode).getOrNull()
+                ?: return@update current
             val cycles = currentVal / LunarAstronomer.SYNODIC_MONTH_DAYS
             val formatted = ScientificCalculatorEngine.formatNumber(cycles)
-            val record = CalculationRecord(
-                id = idCounter.incrementAndGet(),
-                expression = "${ScientificCalculatorEngine.formatNumber(currentVal)} días ÷ 29.5306",
-                result = formatted,
-                badgeLabel = "Ciclos Lunares"
-            )
+            val exprText = "${ScientificCalculatorEngine.formatNumber(currentVal)} días ÷ 29.5306"
+            val topRecord = current.calculationHistory.firstOrNull()
+            val isDuplicate = topRecord != null && topRecord.expression == exprText && topRecord.result == formatted
+            val nextHistory = if (isDuplicate) {
+                current.calculationHistory
+            } else {
+                recordToPersist = Triple(exprText, formatted, "Ciclos Lunares")
+                val record = CalculationRecord(
+                    id = idCounter.incrementAndGet(),
+                    expression = exprText,
+                    result = formatted,
+                    badgeLabel = "Ciclos Lunares"
+                )
+                listOf(record) + current.calculationHistory.take(29)
+            }
             current.copy(
                 expression = formatted,
                 liveResultPreview = formatted,
-                calculationHistory = listOf(record) + current.calculationHistory.take(19)
+                lastAnswer = formatted,
+                calculationHistory = nextHistory
             )
+        }
+        val persisted = recordToPersist
+        if (repository != null && persisted != null) {
+            viewModelScope.launch {
+                repository.insertCalculation(persisted.first, persisted.second, persisted.third)
+            }
         }
     }
 
     fun multiplyCurrentValueBySynodicCycle() {
+        var recordToPersist: Triple<String, String, String?>? = null
         _uiState.update { current ->
             val baseExpr = current.expression.ifBlank { "1" }
-            val currentVal = ScientificCalculatorEngine.evaluate(baseExpr).getOrNull() ?: 1.0
+            val currentVal = ScientificCalculatorEngine.evaluate(baseExpr, current.isRadiansMode).getOrNull() ?: 1.0
             val days = currentVal * LunarAstronomer.SYNODIC_MONTH_DAYS
             val formatted = ScientificCalculatorEngine.formatNumber(days)
-            val record = CalculationRecord(
-                id = idCounter.incrementAndGet(),
-                expression = "${ScientificCalculatorEngine.formatNumber(currentVal)} × 29.5306 d",
-                result = formatted,
-                badgeLabel = "Días en ${ScientificCalculatorEngine.formatNumber(currentVal)} lunas"
-            )
+            val exprText = "${ScientificCalculatorEngine.formatNumber(currentVal)} × 29.5306 d"
+            val badge = "Días en ${ScientificCalculatorEngine.formatNumber(currentVal)} lunas"
+            val topRecord = current.calculationHistory.firstOrNull()
+            val isDuplicate = topRecord != null && topRecord.expression == exprText && topRecord.result == formatted
+            val nextHistory = if (isDuplicate) {
+                current.calculationHistory
+            } else {
+                recordToPersist = Triple(exprText, formatted, badge)
+                val record = CalculationRecord(
+                    id = idCounter.incrementAndGet(),
+                    expression = exprText,
+                    result = formatted,
+                    badgeLabel = badge
+                )
+                listOf(record) + current.calculationHistory.take(29)
+            }
             current.copy(
                 expression = formatted,
                 liveResultPreview = formatted,
-                calculationHistory = listOf(record) + current.calculationHistory.take(19)
+                lastAnswer = formatted,
+                calculationHistory = nextHistory
             )
+        }
+        val persisted = recordToPersist
+        if (repository != null && persisted != null) {
+            viewModelScope.launch {
+                repository.insertCalculation(persisted.first, persisted.second, persisted.third)
+            }
         }
     }
 
     fun sendSelectedDayLunarAgeToCalculator() {
-        val ageFormatted = "%.2f".format(java.util.Locale.US, _uiState.value.selectedDayLunarInfo.lunarAgeDays)
+        val ageFormatted = "%.2f".format(Locale.US, _uiState.value.selectedDayLunarInfo.lunarAgeDays)
         _uiState.update { current ->
             current.copy(
                 currentDestination = AppDestination.CALCULATOR,
@@ -700,6 +935,9 @@ class SeleniaViewModel : ViewModel() {
 
     fun clearHistory() {
         _uiState.update { it.copy(calculationHistory = emptyList()) }
+        if (repository != null) {
+            viewModelScope.launch { repository.clearCalculations() }
+        }
     }
 
     fun useHistoryItem(record: CalculationRecord) {
@@ -729,6 +967,28 @@ class SeleniaViewModel : ViewModel() {
             current.copy(
                 comparisonEndDate = LunarAstronomer.addDays(current.comparisonEndDate, deltaDays)
             )
+        }
+    }
+
+    fun setComparisonStartDate(date: SimpleDate) {
+        _uiState.update { it.copy(comparisonStartDate = date) }
+    }
+
+    fun setComparisonEndDate(date: SimpleDate) {
+        _uiState.update { it.copy(comparisonEndDate = date) }
+    }
+
+    companion object {
+        private val BINARY_OPERATORS = setOf("+", "-", "−", "×", "÷", "^")
+
+        fun provideFactory(
+            repository: SeleniaRepository,
+            appContext: Context
+        ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                return SeleniaViewModel(repository = repository, appContext = appContext) as T
+            }
         }
     }
 }

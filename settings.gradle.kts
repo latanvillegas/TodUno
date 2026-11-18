@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Selenia"
+rootProject.name = "TodUno"
 
 include(":app")

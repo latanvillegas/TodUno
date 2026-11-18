@@ -6,6 +6,7 @@ import java.text.DecimalFormatSymbols
 import java.util.Locale
 import kotlin.math.E
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.ln
 import kotlin.math.log10
@@ -23,29 +24,70 @@ data class CalculationRecord(
 )
 
 object ScientificCalculatorEngine {
+    const val MAX_EXPRESSION_LENGTH = 256
+    private const val MAX_PARSE_DEPTH = 64
+
     private val symbols = DecimalFormatSymbols(Locale.US)
-    private val decimalFormat = DecimalFormat("#,##0.########", symbols).apply {
+    private val standardFormat = DecimalFormat("#,##0.########", symbols).apply {
         isGroupingUsed = false
     }
+    private val scientificFormat = DecimalFormat("0.######E0", symbols)
+
+    private val MULTI_CHAR_TOKENS = listOf(
+        "Error",
+        "sqrt(",
+        "sin(",
+        "cos(",
+        "tan(",
+        "log(",
+        "ln(",
+        "√("
+    )
 
     fun formatNumber(value: Double): String {
         if (value.isNaN() || value.isInfinite()) return "Error"
-        val rounded = if (kotlin.math.abs(value) < 1e-12) 0.0 else value
-        synchronized(decimalFormat) {
-            return decimalFormat.format(rounded)
+        val absVal = abs(value)
+        if (absVal < 1e-12) return "0"
+        return if (absVal >= 1e12 || absVal < 1e-6) {
+            synchronized(scientificFormat) {
+                scientificFormat.format(value)
+            }
+        } else {
+            synchronized(standardFormat) {
+                val formatted = standardFormat.format(value)
+                if (formatted == "-0") "0" else formatted
+            }
         }
     }
 
     /**
-     * Evaluates a mathematical expression string supporting:
-     * +, -, ×, ÷, %, ^, parentheses, π, e, √, sin, cos, tan, ln, log, and implicit multiplication.
-     * Trigonometric functions accept degrees for intuitive everyday scientific calculator usage.
+     * Deletes an entire function token (e.g., `sin(`, `cos(`, `ln(`, `√(`) or `Error` in one press,
+     * falling back to single-character deletion for digits and operators.
      */
-    fun evaluate(rawExpression: String): Result<Double> {
+    fun smartBackspace(expression: String): String {
+        if (expression.isEmpty()) return ""
+        for (token in MULTI_CHAR_TOKENS) {
+            if (expression.endsWith(token)) {
+                return expression.dropLast(token.length)
+            }
+        }
+        return expression.dropLast(1)
+    }
+
+    /**
+     * Evaluates a mathematical expression string supporting:
+     * +, -, ×, ÷, %, ^, parentheses, π, e, √, sin, cos, tan, ln, log, scientific E notation,
+     * and implicit multiplication.
+     * Supports both Degrees ([isRadians] = false) and Radians ([isRadians] = true).
+     */
+    fun evaluate(rawExpression: String, isRadians: Boolean = false): Result<Double> {
         return runCatching {
+            if (rawExpression.length > MAX_EXPRESSION_LENGTH) {
+                throw IllegalArgumentException("Expression exceeds maximum safe length")
+            }
             val normalized = normalizeExpression(rawExpression)
             if (normalized.isEmpty()) return Result.failure(IllegalArgumentException("Empty"))
-            val parser = ExpressionParser(normalized)
+            val parser = ExpressionParser(normalized, isRadians)
             val value = parser.parse()
             if (value.isNaN() || value.isInfinite()) {
                 throw ArithmeticException("Invalid result")
@@ -54,10 +96,6 @@ object ScientificCalculatorEngine {
         }
     }
 
-    /**
-     * Normalizes operators, symbols, and inserts explicit '*' where implicit multiplication is written
-     * (e.g., "2π" -> "2*π", "2(3+4)" -> "2*(3+4)", "(2)(3)" -> "(2)*(3)", "3sin(30)" -> "3*sin(30)").
-     */
     private fun normalizeExpression(raw: String): String {
         val preReplaced = if (raw.contains("🌙")) raw.replace("🌙", "L") else raw
         val compact = buildString(preReplaced.length) {
@@ -78,7 +116,7 @@ object ScientificCalculatorEngine {
                 val curr = compact[i]
                 if (i > 0) {
                     val prev = compact[i - 1]
-                    if (needsImplicitMultiply(prev, curr)) {
+                    if (needsImplicitMultiply(compact, i, prev, curr)) {
                         append('*')
                     }
                 }
@@ -87,13 +125,20 @@ object ScientificCalculatorEngine {
         }
     }
 
-    private fun needsImplicitMultiply(prev: Char, curr: Char): Boolean {
+    private fun needsImplicitMultiply(compact: String, index: Int, prev: Char, curr: Char): Boolean {
+        // Preserve scientific notation such as 1.5E6 or 1.5E-7 (uppercase E after digit/dot)
+        if (curr == 'E' && (prev.isDigit() || prev == '.')) {
+            val next = compact.getOrNull(index + 1)
+            if (next != null && (next.isDigit() || next == '+' || next == '-')) {
+                return false
+            }
+        }
+
         val prevIsValueEnd = prev.isDigit() || prev == ')' || prev == '%' || prev == 'π' || prev == 'e' || prev == 'L'
         val currIsValueStart = curr == '(' || curr == '√' || curr == 'π' || curr == 'L' || curr.isLetter()
         val prevIsConstantOrClose = prev == ')' || prev == '%' || prev == 'π' || prev == 'e' || prev == 'L'
         val currIsNumber = curr.isDigit() || curr == '.'
 
-        // Avoid splitting function names like "sin", "cos", "tan", "log", "ln", "sqrt"
         if (prev.isLetter() && prev != 'π' && prev != 'L' && curr.isLetter() && curr != 'π' && curr != 'L') {
             return false
         }
@@ -103,9 +148,13 @@ object ScientificCalculatorEngine {
         return (prevIsValueEnd && currIsValueStart) || (prevIsConstantOrClose && currIsNumber)
     }
 
-    private class ExpressionParser(private val input: String) {
+    private class ExpressionParser(
+        private val input: String,
+        private val isRadians: Boolean
+    ) {
         private var pos = -1
         private var ch = 0
+        private var depth = 0
 
         private fun nextChar() {
             ch = if (++pos < input.length) input[pos].code else -1
@@ -128,23 +177,30 @@ object ScientificCalculatorEngine {
         }
 
         private fun parseExpression(): Double {
-            var x = parseTerm()
-            while (true) {
-                when {
-                    eat('+'.code) -> x += parseTerm()
-                    eat('-'.code) -> x -= parseTerm()
-                    else -> return x
+            if (++depth > MAX_PARSE_DEPTH) {
+                throw IllegalArgumentException("Expression nesting too deep")
+            }
+            try {
+                var x = parseTerm()
+                while (true) {
+                    when {
+                        eat('+'.code) -> x += parseTerm()
+                        eat('-'.code) -> x -= parseTerm()
+                        else -> return x
+                    }
                 }
+            } finally {
+                depth--
             }
         }
 
         private fun parseTerm(): Double {
-            var x = parseFactor()
+            var x = parseUnary()
             while (true) {
                 when {
-                    eat('*'.code) -> x *= parseFactor()
+                    eat('*'.code) -> x *= parseUnary()
                     eat('/'.code) -> {
-                        val divisor = parseFactor()
+                        val divisor = parseUnary()
                         if (divisor == 0.0) throw ArithmeticException("Division by zero")
                         x /= divisor
                     }
@@ -153,55 +209,102 @@ object ScientificCalculatorEngine {
             }
         }
 
-        private fun parseFactor(): Double {
-            if (eat('+'.code)) return parseFactor()
-            if (eat('-'.code)) return -parseFactor()
+        private fun parseUnary(): Double {
+            if (++depth > MAX_PARSE_DEPTH) {
+                throw IllegalArgumentException("Expression nesting too deep")
+            }
+            try {
+                if (eat('+'.code)) return parseUnary()
+                if (eat('-'.code)) return -parseUnary()
+                return parsePower()
+            } finally {
+                depth--
+            }
+        }
 
-            var x: Double
+        private fun parsePower(): Double {
+            var x = parsePostfix()
+            if (eat('^'.code)) {
+                x = x.pow(parseUnary())
+            }
+            return x
+        }
+
+        private fun parsePostfix(): Double {
+            var x = parsePrimary()
+            while (eat('%'.code)) {
+                x /= 100.0
+            }
+            return x
+        }
+
+        private fun parsePrimary(): Double {
             val startPos = pos
-            if (eat('('.code)) {
-                x = parseExpression()
-                eat(')'.code) // Auto-close trailing parenthesis if omitted
+            return if (eat('('.code)) {
+                val inner = parseExpression()
+                if (!eat(')'.code) && pos < input.length) {
+                    throw IllegalArgumentException("Missing closing parenthesis")
+                }
+                inner
             } else if ((ch in '0'.code..'9'.code) || ch == '.'.code) {
                 while ((ch in '0'.code..'9'.code) || ch == '.'.code) nextChar()
-                x = input.substring(startPos, pos).toDouble()
+                // Scientific exponent part (e.g., 1.25E-8 or 3E12)
+                if (ch == 'E'.code) {
+                    nextChar()
+                    if (ch == '+'.code || ch == '-'.code) nextChar()
+                    if (ch !in '0'.code..'9'.code) {
+                        throw IllegalArgumentException("Invalid scientific exponent")
+                    }
+                    while (ch in '0'.code..'9'.code) nextChar()
+                }
+                input.substring(startPos, pos).toDouble()
             } else if (ch == 'π'.code) {
                 nextChar()
-                x = PI
+                PI
             } else if (ch == 'L'.code) {
                 nextChar()
-                x = LunarAstronomer.SYNODIC_MONTH_DAYS
+                LunarAstronomer.SYNODIC_MONTH_DAYS
             } else if (ch == '√'.code) {
                 nextChar()
-                val arg = parseFactor()
+                val arg = parseUnary()
                 if (arg < 0.0) throw ArithmeticException("Negative square root")
-                x = sqrt(arg)
+                sqrt(arg)
             } else if (ch in 'a'.code..'z'.code || ch in 'A'.code..'Z'.code) {
                 while (ch in 'a'.code..'z'.code || ch in 'A'.code..'Z'.code) nextChar()
                 val func = input.substring(startPos, pos).lowercase(Locale.ROOT)
-                x = if (func == "e") {
+                if (func == "e") {
                     E
                 } else {
-                    val arg = parseFactor()
+                    val arg = parseUnary()
+                    val degEquiv = if (isRadians) Math.toDegrees(arg) else arg
+                    val radEquiv = if (isRadians) arg else Math.toRadians(arg)
                     when (func) {
                         "sqrt" -> {
                             if (arg < 0.0) throw ArithmeticException("Negative square root")
                             sqrt(arg)
                         }
                         "sin" -> {
-                            val normDeg = ((arg % 360.0) + 360.0) % 360.0
-                            if (normDeg == 0.0 || normDeg == 180.0) 0.0 else sin(Math.toRadians(arg))
+                            val normDeg = ((degEquiv % 360.0) + 360.0) % 360.0
+                            if (abs(normDeg) < 1e-9 || abs(normDeg - 180.0) < 1e-9) {
+                                0.0
+                            } else {
+                                sin(radEquiv)
+                            }
                         }
                         "cos" -> {
-                            val normDeg = ((arg % 360.0) + 360.0) % 360.0
-                            if (normDeg == 90.0 || normDeg == 270.0) 0.0 else cos(Math.toRadians(arg))
+                            val normDeg = ((degEquiv % 360.0) + 360.0) % 360.0
+                            if (abs(normDeg - 90.0) < 1e-9 || abs(normDeg - 270.0) < 1e-9) {
+                                0.0
+                            } else {
+                                cos(radEquiv)
+                            }
                         }
                         "tan" -> {
-                            val normDeg = ((arg % 180.0) + 180.0) % 180.0
-                            if (kotlin.math.abs(normDeg - 90.0) < 1e-9) {
+                            val normDeg = ((degEquiv % 180.0) + 180.0) % 180.0
+                            if (abs(normDeg - 90.0) < 1e-7) {
                                 throw ArithmeticException("Tangent undefined at 90°")
                             }
-                            if (normDeg == 0.0) 0.0 else tan(Math.toRadians(arg))
+                            if (abs(normDeg) < 1e-9) 0.0 else tan(radEquiv)
                         }
                         "ln" -> {
                             if (arg <= 0.0) throw ArithmeticException("Non-positive logarithm")
@@ -217,15 +320,6 @@ object ScientificCalculatorEngine {
             } else {
                 throw IllegalArgumentException("Unexpected character")
             }
-
-            if (eat('^'.code)) {
-                x = x.pow(parseFactor())
-            }
-            while (eat('%'.code)) {
-                x /= 100.0
-            }
-
-            return x
         }
     }
 }

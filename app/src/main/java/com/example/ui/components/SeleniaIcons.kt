@@ -4,34 +4,17 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccessTime
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.AutoAwesomeMosaic
-import androidx.compose.material.icons.filled.AutoFixHigh
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Calculate
-import androidx.compose.material.icons.filled.ContentCut
-import androidx.compose.material.icons.filled.Eco
-import androidx.compose.material.icons.filled.Handyman
-import androidx.compose.material.icons.filled.LocalFlorist
-import androidx.compose.material.icons.filled.NightlightRound
-import androidx.compose.material.icons.filled.Park
-import androidx.compose.material.icons.filled.Phishing
-import androidx.compose.material.icons.filled.SelfImprovement
-import androidx.compose.material.icons.filled.Spa
-import androidx.compose.material.icons.filled.TravelExplore
-import androidx.compose.material.icons.filled.WaterDrop
-import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -50,7 +33,6 @@ import com.example.domain.LunarAlmanacCategory
 import com.example.domain.LunarTraditionalGoal
 import com.example.domain.MoonPhaseType
 import com.example.ui.AppDestination
-import com.example.ui.ModuleThemeTarget
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -184,8 +166,8 @@ fun SeleniaBrandEmblem(
 }
 
 /**
- * 3D Multi-Color Polychromatic Icon for the 5 main modules:
- * Calendario, Luna, Reloj, Calculadora, and Estudio de Colores.
+ * 3D Multi-Color Polychromatic Icon for the 4 main modules:
+ * Calendario, Luna, Reloj, and Calculadora.
  * Renders depth shadow, 3-stop volumetric gradients, top-left specular glass reflection,
  * and bespoke 3D internal geometry per module with zero per-frame Path/List allocations.
  */
@@ -215,35 +197,8 @@ fun SeleniaModule3DIcon(
             )
             AppDestination.CLOCK -> draw3DClockIcon(alphaScale, selected, customAccent)
             AppDestination.CALCULATOR -> draw3DCalculatorIcon(alphaScale, selected, customAccent)
-            AppDestination.COLORS -> draw3DColorStudioIcon(alphaScale, selected, customAccent)
         }
     }
-}
-
-/**
- * Overload of [SeleniaModule3DIcon] for [ModuleThemeTarget] (used in Color Studio).
- */
-@Composable
-fun SeleniaModule3DTargetIcon(
-    target: ModuleThemeTarget,
-    modifier: Modifier = Modifier,
-    size: Dp = 26.dp,
-    customAccent: Color? = null
-) {
-    val mappedDestination = when (target) {
-        ModuleThemeTarget.CALENDAR -> AppDestination.CALENDAR
-        ModuleThemeTarget.MOON_OBSERVATORY -> AppDestination.MOON_OBSERVATORY
-        ModuleThemeTarget.CLOCK -> AppDestination.CLOCK
-        ModuleThemeTarget.CALCULATOR -> AppDestination.CALCULATOR
-        ModuleThemeTarget.ALL_MODULES -> AppDestination.COLORS
-    }
-    SeleniaModule3DIcon(
-        destination = mappedDestination,
-        selected = true,
-        modifier = modifier,
-        size = size,
-        customAccent = customAccent
-    )
 }
 
 private fun DrawScope.draw3DCalendarIcon(
@@ -704,92 +659,6 @@ private fun DrawScope.draw3DCalculatorIcon(
     )
 }
 
-private fun DrawScope.draw3DColorStudioIcon(
-    alpha: Float,
-    selected: Boolean,
-    customAccent: Color?
-) {
-    val w = size.width
-    val h = size.height
-    val cx = w * 0.5f
-    val cy = h * 0.5f
-    val r = w * 0.42f
-
-    // 1. 3D Outer Chromatic Conic Ring
-    drawCircle(
-        brush = Brush.sweepGradient(
-            colors = listOf(
-                Color(0xFFFF4081).copy(alpha = alpha),
-                Color(0xFFFFD740).copy(alpha = alpha),
-                Color(0xFF69F0AE).copy(alpha = alpha),
-                Color(0xFF00E5FF).copy(alpha = alpha),
-                Color(0xFF7C4DFF).copy(alpha = alpha),
-                Color(0xFFFF4081).copy(alpha = alpha)
-            ),
-            center = Offset(cx, cy)
-        ),
-        radius = r,
-        center = Offset(cx, cy),
-        style = Stroke(width = w * 0.07f)
-    )
-
-    // 2. Dark Velvet Interior Backdrop
-    drawCircle(
-        color = Color(0xFF10172A).copy(alpha = 0.9f * alpha),
-        radius = r * 0.84f,
-        center = Offset(cx, cy)
-    )
-
-    // 3. Three Overlapping 3D Volumetric Spheres (Magenta/Coral, Cyan, Solar Gold)
-    val orbR = r * 0.42f
-    val topAccent = customAccent ?: Color(0xFFFF4081)
-
-    // Top Orb (Magenta / Custom)
-    val topCenter = Offset(cx, cy - r * 0.24f)
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(Color.White.copy(alpha = alpha), topAccent.copy(alpha = alpha), topAccent.copy(alpha = 0.5f * alpha)),
-            center = Offset(topCenter.x - orbR * 0.3f, topCenter.y - orbR * 0.3f),
-            radius = orbR * 1.2f
-        ),
-        radius = orbR,
-        center = topCenter
-    )
-
-    // Bottom-Left Orb (Cyan)
-    val leftCenter = Offset(cx - r * 0.24f, cy + r * 0.20f)
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(Color.White.copy(alpha = alpha), Color(0xFF00E5FF).copy(alpha = alpha), Color(0xFF0097A7).copy(alpha = 0.6f * alpha)),
-            center = Offset(leftCenter.x - orbR * 0.3f, leftCenter.y - orbR * 0.3f),
-            radius = orbR * 1.2f
-        ),
-        radius = orbR,
-        center = leftCenter
-    )
-
-    // Bottom-Right Orb (Solar Gold)
-    val rightCenter = Offset(cx + r * 0.24f, cy + r * 0.20f)
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(Color.White.copy(alpha = alpha), Color(0xFFFFD54F).copy(alpha = alpha), Color(0xFFFF8F00).copy(alpha = 0.6f * alpha)),
-            center = Offset(rightCenter.x - orbR * 0.3f, rightCenter.y - orbR * 0.3f),
-            radius = orbR * 1.2f
-        ),
-        radius = orbR,
-        center = rightCenter
-    )
-
-    // Center White Prism Core Highlight
-    if (selected) {
-        drawCircle(
-            color = Color.White.copy(alpha = 0.9f),
-            radius = r * 0.14f,
-            center = Offset(cx, cy + r * 0.04f)
-        )
-    }
-}
-
 /**
  * High-precision astronomical medallion for any [MoonPhaseType].
  * Replaces flat OS text emojis (🌑..🌘) with a crisp vector-styled lunar disc,
@@ -818,90 +687,103 @@ fun MoonPhaseBadgeIcon(
 
     val reusablePath = remember { Path() }
 
-    Canvas(modifier = modifier.size(size)) {
-        val radius = this.size.minDimension / 2f * 0.86f
-        val center = Offset(this.size.width / 2f, this.size.height / 2f)
+    Spacer(
+        modifier = modifier
+            .size(size)
+            .drawWithCache {
+                val radius = this.size.minDimension / 2f * 0.86f
+                val center = Offset(this.size.width / 2f, this.size.height / 2f)
 
-        // Subtle outer glow
-        drawCircle(
-            color = litColor.copy(alpha = 0.16f),
-            radius = radius * 1.15f,
-            center = center
-        )
+                val isWaxing = phaseFraction <= 0.5f
+                val illumination = (1f - cos(phaseFraction * 2f * Math.PI.toFloat())) / 2f
+                val flip = if (southernHemisphere) -1f else 1f
+                val litOnRight = (isWaxing && flip > 0f) || (!isWaxing && flip < 0f)
 
-        // Shadowed lunar base disc
-        drawCircle(
-            color = shadowColor,
-            radius = radius,
-            center = center
-        )
-
-        // Illuminated portion
-        val isWaxing = phaseFraction <= 0.5f
-        val illumination = (1f - cos(phaseFraction * 2f * Math.PI.toFloat())) / 2f
-        val flip = if (southernHemisphere) -1f else 1f
-        val litOnRight = (isWaxing && flip > 0f) || (!isWaxing && flip < 0f)
-
-        if (illumination > 0.02f) {
-            if (illumination >= 0.98f) {
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(Color(0xFFFFF8E1), litColor),
-                        center = Offset(center.x - radius * 0.2f, center.y - radius * 0.2f),
-                        radius = radius * 1.3f
-                    ),
-                    radius = radius,
-                    center = center
+                val fullMoonBrush = Brush.radialGradient(
+                    colors = listOf(Color(0xFFFFF8E1), litColor),
+                    center = Offset(center.x - radius * 0.2f, center.y - radius * 0.2f),
+                    radius = radius * 1.3f
                 )
-            } else {
-                reusablePath.reset()
-                val k = 2f * illumination - 1f
-                for (i in 0..BADGE_TERMINATOR_STEPS) {
-                    val y = center.y + BADGE_UNIT_T[i] * radius
-                    val halfChord = BADGE_UNIT_HALF_CHORD[i] * radius
-                    val xLimb = if (litOnRight) center.x + halfChord else center.x - halfChord
-                    if (i == 0) reusablePath.moveTo(xLimb, y) else reusablePath.lineTo(xLimb, y)
-                }
-                for (i in BADGE_TERMINATOR_STEPS downTo 0) {
-                    val y = center.y + BADGE_UNIT_T[i] * radius
-                    val halfChord = BADGE_UNIT_HALF_CHORD[i] * radius
-                    val xTerm = if (litOnRight) {
-                        center.x - k * halfChord
-                    } else {
-                        center.x + k * halfChord
+                val crescentBrush = Brush.linearGradient(
+                    colors = listOf(Color(0xFFFFF8E1), litColor)
+                )
+
+                if (illumination > 0.02f && illumination < 0.98f) {
+                    reusablePath.reset()
+                    val k = 2f * illumination - 1f
+                    for (i in 0..BADGE_TERMINATOR_STEPS) {
+                        val y = center.y + BADGE_UNIT_T[i] * radius
+                        val halfChord = BADGE_UNIT_HALF_CHORD[i] * radius
+                        val xLimb = if (litOnRight) center.x + halfChord else center.x - halfChord
+                        if (i == 0) reusablePath.moveTo(xLimb, y) else reusablePath.lineTo(xLimb, y)
                     }
-                    reusablePath.lineTo(xTerm, y)
+                    for (i in BADGE_TERMINATOR_STEPS downTo 0) {
+                        val y = center.y + BADGE_UNIT_T[i] * radius
+                        val halfChord = BADGE_UNIT_HALF_CHORD[i] * radius
+                        val xTerm = if (litOnRight) {
+                            center.x - k * halfChord
+                        } else {
+                            center.x + k * halfChord
+                        }
+                        reusablePath.lineTo(xTerm, y)
+                    }
+                    reusablePath.close()
                 }
-                reusablePath.close()
-                drawPath(
-                    path = reusablePath,
-                    brush = Brush.linearGradient(
-                        colors = listOf(Color(0xFFFFF8E1), litColor)
+
+                val outerGlowColor = litColor.copy(alpha = 0.16f)
+                val craterAColor = shadowColor.copy(alpha = 0.22f)
+                val craterBColor = shadowColor.copy(alpha = 0.18f)
+                val rimColor = litColor.copy(alpha = 0.55f)
+                val rimStroke = Stroke(width = (this.size.minDimension * 0.055f).coerceAtLeast(1f))
+
+                onDrawBehind {
+                    drawCircle(
+                        color = outerGlowColor,
+                        radius = radius * 1.15f,
+                        center = center
                     )
-                )
+
+                    drawCircle(
+                        color = shadowColor,
+                        radius = radius,
+                        center = center
+                    )
+
+                    if (illumination > 0.02f) {
+                        if (illumination >= 0.98f) {
+                            drawCircle(
+                                brush = fullMoonBrush,
+                                radius = radius,
+                                center = center
+                            )
+                        } else {
+                            drawPath(
+                                path = reusablePath,
+                                brush = crescentBrush
+                            )
+                        }
+                    }
+
+                    drawCircle(
+                        color = craterAColor,
+                        radius = radius * 0.18f,
+                        center = Offset(center.x - radius * 0.26f, center.y - radius * 0.18f)
+                    )
+                    drawCircle(
+                        color = craterBColor,
+                        radius = radius * 0.14f,
+                        center = Offset(center.x + radius * 0.22f, center.y + radius * 0.24f)
+                    )
+
+                    drawCircle(
+                        color = rimColor,
+                        radius = radius,
+                        center = center,
+                        style = rimStroke
+                    )
+                }
             }
-        }
-
-        // Subtle crater details on lit/dark surface
-        drawCircle(
-            color = shadowColor.copy(alpha = 0.22f),
-            radius = radius * 0.18f,
-            center = Offset(center.x - radius * 0.26f, center.y - radius * 0.18f)
-        )
-        drawCircle(
-            color = shadowColor.copy(alpha = 0.18f),
-            radius = radius * 0.14f,
-            center = Offset(center.x + radius * 0.22f, center.y + radius * 0.24f)
-        )
-
-        // Crisp metallic rim
-        drawCircle(
-            color = litColor.copy(alpha = 0.55f),
-            radius = radius,
-            center = center,
-            style = Stroke(width = (this.size.minDimension * 0.055f).coerceAtLeast(1f))
-        )
-    }
+    )
 }
 
 /**
@@ -955,15 +837,15 @@ fun SeleniaIconBadge(
  * Maps each [LunarAlmanacCategory] to a dedicated Material Symbol vector icon.
  */
 fun LunarAlmanacCategory.iconVector(): ImageVector = when (this) {
-    LunarAlmanacCategory.ALL -> Icons.Filled.AutoAwesome
-    LunarAlmanacCategory.BEAUTY_SKIN -> Icons.Filled.Spa
-    LunarAlmanacCategory.HAIR_CARE -> Icons.Filled.ContentCut
-    LunarAlmanacCategory.WELLNESS -> Icons.Filled.SelfImprovement
-    LunarAlmanacCategory.GARDENING -> Icons.Filled.Eco
-    LunarAlmanacCategory.ASTRONOMY -> Icons.Filled.TravelExplore
-    LunarAlmanacCategory.TIDES -> Icons.Filled.Waves
-    LunarAlmanacCategory.FISHING -> Icons.Filled.Phishing
-    LunarAlmanacCategory.HOME_CRAFTS -> Icons.Filled.Handyman
+    LunarAlmanacCategory.ALL -> SeleniaVectorIcons.AutoAwesome
+    LunarAlmanacCategory.BEAUTY_SKIN -> SeleniaVectorIcons.Spa
+    LunarAlmanacCategory.HAIR_CARE -> SeleniaVectorIcons.ContentCut
+    LunarAlmanacCategory.WELLNESS -> SeleniaVectorIcons.SelfImprovement
+    LunarAlmanacCategory.GARDENING -> SeleniaVectorIcons.Eco
+    LunarAlmanacCategory.ASTRONOMY -> SeleniaVectorIcons.TravelExplore
+    LunarAlmanacCategory.TIDES -> SeleniaVectorIcons.Waves
+    LunarAlmanacCategory.FISHING -> SeleniaVectorIcons.Phishing
+    LunarAlmanacCategory.HOME_CRAFTS -> SeleniaVectorIcons.Handyman
 }
 
 /**
@@ -985,13 +867,13 @@ fun LunarAlmanacCategory.accentColor(): Color = when (this) {
  * Maps each [LunarTraditionalGoal] to a dedicated Material Symbol vector icon.
  */
 fun LunarTraditionalGoal.iconVector(): ImageVector = when (this) {
-    LunarTraditionalGoal.FAST_HAIR_GROWTH -> Icons.Filled.ContentCut
-    LunarTraditionalGoal.STRONG_THICK_HAIR -> Icons.Filled.AutoAwesome
-    LunarTraditionalGoal.LONG_LASTING_DEPILATION -> Icons.Filled.AutoFixHigh
-    LunarTraditionalGoal.SKIN_NUTRITION_GLOW -> Icons.Filled.Spa
-    LunarTraditionalGoal.SKIN_DETOX_EXFOLIATION -> Icons.Filled.WaterDrop
-    LunarTraditionalGoal.PLANTING_FRUITS_FLOWERS -> Icons.Filled.LocalFlorist
-    LunarTraditionalGoal.PRUNING_AND_TIMBER -> Icons.Filled.Park
+    LunarTraditionalGoal.FAST_HAIR_GROWTH -> SeleniaVectorIcons.ContentCut
+    LunarTraditionalGoal.STRONG_THICK_HAIR -> SeleniaVectorIcons.AutoAwesome
+    LunarTraditionalGoal.LONG_LASTING_DEPILATION -> SeleniaVectorIcons.AutoFixHigh
+    LunarTraditionalGoal.SKIN_NUTRITION_GLOW -> SeleniaVectorIcons.Spa
+    LunarTraditionalGoal.SKIN_DETOX_EXFOLIATION -> SeleniaVectorIcons.WaterDrop
+    LunarTraditionalGoal.PLANTING_FRUITS_FLOWERS -> SeleniaVectorIcons.LocalFlorist
+    LunarTraditionalGoal.PRUNING_AND_TIMBER -> SeleniaVectorIcons.Park
 }
 
 /**
@@ -1005,15 +887,4 @@ fun LunarTraditionalGoal.accentColor(): Color = when (this) {
     LunarTraditionalGoal.SKIN_DETOX_EXFOLIATION -> Color(0xFF4DD0E1)
     LunarTraditionalGoal.PLANTING_FRUITS_FLOWERS -> Color(0xFF81C784)
     LunarTraditionalGoal.PRUNING_AND_TIMBER -> Color(0xFFA1887F)
-}
-
-/**
- * Maps each [ModuleThemeTarget] to a crisp Material Symbol vector icon.
- */
-fun ModuleThemeTarget.iconVector(): ImageVector = when (this) {
-    ModuleThemeTarget.ALL_MODULES -> Icons.Filled.AutoAwesomeMosaic
-    ModuleThemeTarget.CALENDAR -> Icons.Filled.CalendarMonth
-    ModuleThemeTarget.MOON_OBSERVATORY -> Icons.Filled.NightlightRound
-    ModuleThemeTarget.CLOCK -> Icons.Filled.AccessTime
-    ModuleThemeTarget.CALCULATOR -> Icons.Filled.Calculate
 }

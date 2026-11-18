@@ -1,9 +1,14 @@
 package com.example.ui.screens
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,14 +33,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Calculate
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.NightlightRound
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.Today
+import androidx.compose.material.icons.filled.Notifications
 import com.example.domain.LunarAlmanacCategory
+import com.example.notifications.SeleniaAlertManager
+import com.example.ui.components.MonthYearPickerDialog
 import com.example.ui.components.MoonPhaseBadgeIcon
 import com.example.ui.components.SeleniaIconBadge
+import com.example.ui.components.SeleniaVectorIcons
 import com.example.ui.components.accentColor
 import com.example.ui.components.iconVector
 import com.example.ui.components.recommendedCalendarLitColor
@@ -55,6 +59,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -64,22 +69,28 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.ui.semantics.Role
 import com.example.R
 import com.example.domain.CalendarDayCell
 import com.example.domain.LunarAstronomer
 import com.example.domain.MajorPhaseMilestone
 import com.example.domain.SimpleDate
 import com.example.ui.CalendarNote
-import com.example.ui.ModuleThemeTarget
 import com.example.ui.SeleniaUiState
-import com.example.ui.components.ModuleSkinBox
 import com.example.ui.components.RealisticMoonCanvas
+
+private val NOTE_CATEGORIES = listOf("Personal", "Astronomía", "Siembra", "Cálculo")
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -87,23 +98,39 @@ fun CalendarScreen(
     uiState: SeleniaUiState,
     onSelectDate: (SimpleDate) -> Unit,
     onChangeMonth: (Int) -> Unit,
+    onJumpToYearMonth: (Int, Int) -> Unit = { _, _ -> },
     onJumpToToday: () -> Unit,
     onOpenMoonObservatory: () -> Unit,
     onSendAgeToCalculator: () -> Unit,
-    onAddNote: (String, String) -> Unit,
+    onAddNote: (String, String, Boolean) -> Unit,
     onDeleteNote: (SimpleDate, Long) -> Unit,
-    onOpenColorCustomizer: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
+    var showMonthYearPicker by rememberSaveable { mutableStateOf(false) }
     var showAddNoteForm by rememberSaveable { mutableStateOf(false) }
     var noteTitle by rememberSaveable { mutableStateOf("") }
     var noteCategory by rememberSaveable { mutableStateOf("Personal") }
+    var noteReminder by rememberSaveable { mutableStateOf(false) }
+    var dragAccumulatedX by remember { mutableFloatStateOf(0f) }
 
-    val skin = uiState.skinFor(ModuleThemeTarget.CALENDAR)
-    val customMoonLitColor = if (skin.isCustomApplied) {
-        Color(skin.primarySwatch.rgb.r, skin.primarySwatch.rgb.g, skin.primarySwatch.rgb.b)
-    } else {
-        Color(0xFFF7E7B4)
+    val notificationLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        noteReminder = granted
+    }
+
+    if (showMonthYearPicker) {
+        MonthYearPickerDialog(
+            initialYear = uiState.displayYear,
+            initialMonth = uiState.displayMonth,
+            onDismiss = { showMonthYearPicker = false },
+            onConfirmYearMonth = { year, month ->
+                showMonthYearPicker = false
+                onJumpToYearMonth(year, month)
+            }
+        )
     }
 
     val selectedDayNotes = remember(uiState.notesByDate, uiState.selectedDate) {
@@ -129,158 +156,151 @@ fun CalendarScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 1. Month Header Bar + "Hoy" & "Color" buttons with custom ModuleSkinBox
-            item {
+            // 1. Month Header Bar + "Hoy" button
+            item(key = "month_header_grid") {
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surface
                     ),
                     shape = MaterialTheme.shapes.large,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .pointerInput(uiState.displayYear, uiState.displayMonth) {
+                            detectHorizontalDragGestures(
+                                onDragStart = { dragAccumulatedX = 0f },
+                                onDragEnd = {
+                                    if (dragAccumulatedX > 90f) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        onChangeMonth(-1)
+                                    } else if (dragAccumulatedX < -90f) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        onChangeMonth(1)
+                                    }
+                                    dragAccumulatedX = 0f
+                                }
+                            ) { _, dragAmount ->
+                                dragAccumulatedX += dragAmount
+                            }
+                        }
                 ) {
-                    ModuleSkinBox(
-                        skin = skin,
-                        alphaIntensity = 0.34f,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(
-                                    if (!skin.isCustomApplied) {
-                                        Brush.horizontalGradient(
-                                            listOf(
-                                                MaterialTheme.colorScheme.surface,
-                                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
-                                            )
-                                        )
-                                    } else {
-                                        Brush.horizontalGradient(
-                                            listOf(Color.Transparent, Color.Transparent)
-                                        )
-                                    }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(
+                                        MaterialTheme.colorScheme.surface,
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+                                    )
                                 )
-                                .padding(horizontal = 12.dp, vertical = 12.dp)
+                            )
+                            .padding(horizontal = 12.dp, vertical = 12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    IconButton(
-                                        onClick = { onChangeMonth(-1) },
-                                        modifier = Modifier.testTag("calendar_prev_month_button")
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                                            contentDescription = stringResource(R.string.prev_month_desc),
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier.padding(horizontal = 4.dp)
-                                    ) {
-                                        Text(
-                                            text = monthTitle,
-                                            style = MaterialTheme.typography.headlineMedium,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            modifier = Modifier.testTag("calendar_month_title")
-                                        )
-                                        Text(
-                                            text = if (skin.isCustomApplied) {
-                                                "Tema: ${skin.primarySwatch.label} (${skin.gradientStyle.badge})"
-                                            } else {
-                                                stringResource(R.string.astronomical_season_note)
-                                            },
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    IconButton(
-                                        onClick = { onChangeMonth(1) },
-                                        modifier = Modifier.testTag("calendar_next_month_button")
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                            contentDescription = stringResource(R.string.next_month_desc),
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                }
-
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    IconButton(
-                                        onClick = onOpenColorCustomizer,
-                                        modifier = Modifier.testTag("calendar_customize_color_button")
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Palette,
-                                            contentDescription = "Personalizar color del calendario",
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                    AssistChip(
-                                        onClick = onJumpToToday,
-                                        label = { Text(stringResource(R.string.today_button)) },
-                                        leadingIcon = {
-                                            Icon(
-                                                imageVector = Icons.Default.Today,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        },
-                                        colors = AssistChipDefaults.assistChipColors(
-                                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                            labelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            leadingIconContentColor = MaterialTheme.colorScheme.primary
-                                        ),
-                                        modifier = Modifier.testTag("calendar_today_button")
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(
+                                    onClick = { onChangeMonth(-1) },
+                                    modifier = Modifier.testTag("calendar_prev_month_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                        contentDescription = stringResource(R.string.prev_month_desc),
+                                        tint = MaterialTheme.colorScheme.primary
                                     )
                                 }
-                            }
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            // Weekday headers (Lun..Dom)
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                LunarAstronomer.SPANISH_WEEKDAYS_SHORT.forEach { dayLabel ->
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier
+                                        .minimumInteractiveComponentSize()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable(role = Role.Button) { showMonthYearPicker = true }
+                                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                                        .testTag("calendar_month_year_picker_trigger")
+                                ) {
                                     Text(
-                                        text = dayLabel,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.secondary,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.weight(1f)
+                                        text = "$monthTitle ▾",
+                                        style = MaterialTheme.typography.headlineMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.testTag("calendar_month_title")
+                                    )
+                                    Text(
+                                        text = "Toca para ir a Mes/Año • Desliza ← →",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { onChangeMonth(1) },
+                                    modifier = Modifier.testTag("calendar_next_month_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                        contentDescription = stringResource(R.string.next_month_desc),
+                                        tint = MaterialTheme.colorScheme.primary
                                     )
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                            AssistChip(
+                                onClick = onJumpToToday,
+                                label = { Text(stringResource(R.string.today_button)) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = SeleniaVectorIcons.Today,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                colors = AssistChipDefaults.assistChipColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    labelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    leadingIconContentColor = MaterialTheme.colorScheme.primary
+                                ),
+                                modifier = Modifier.testTag("calendar_today_button")
+                            )
+                        }
 
-                            // 6-week (42 cells) Calendar Grid with miniature realistic moons
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                weeks.forEach { weekCells ->
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        weekCells.forEach { cell ->
-                                            val hasNotes = cell.date.storageKey in datesWithNotes
-                                            CalendarDayCellItem(
-                                                cell = cell,
-                                                isSelected = cell.date == uiState.selectedDate,
-                                                isNorthernHemisphere = uiState.isNorthernHemisphere,
-                                                hasNotes = hasNotes,
-                                                moonLitColor = customMoonLitColor,
-                                                isCustomSkin = skin.isCustomApplied,
-                                                onClick = { onSelectDate(cell.date) },
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Weekday headers (Lun..Dom)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            LunarAstronomer.SPANISH_WEEKDAYS_SHORT.forEach { dayLabel ->
+                                Text(
+                                    text = dayLabel,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // 6-week (42 cells) Calendar Grid with miniature realistic moons
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            weeks.forEach { weekCells ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    weekCells.forEach { cell ->
+                                        val hasNotes = cell.date.storageKey in datesWithNotes
+                                        CalendarDayCellItem(
+                                            cell = cell,
+                                            isSelected = cell.date == uiState.selectedDate,
+                                            isNorthernHemisphere = uiState.isNorthernHemisphere,
+                                            hasNotes = hasNotes,
+                                            onClick = { onSelectDate(cell.date) },
+                                            modifier = Modifier.weight(1f)
+                                        )
                                     }
                                 }
                             }
@@ -290,7 +310,7 @@ fun CalendarScreen(
             }
 
             // 1.5 Phase Color Legend Strip for Calendar Moons
-            item {
+            item(key = "phase_legend") {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -319,7 +339,7 @@ fun CalendarScreen(
 
             // 2. Month Major Lunar Milestones Strip
             if (uiState.monthMilestones.isNotEmpty()) {
-                item {
+                item(key = "month_milestones") {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
                             text = stringResource(R.string.month_lunar_milestones),
@@ -330,16 +350,14 @@ fun CalendarScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier.testTag("month_milestones_row")
                         ) {
-                            items(uiState.monthMilestones) { milestone ->
-                                val phaseColor = if (skin.isCustomApplied) {
-                                    customMoonLitColor
-                                } else {
-                                    milestone.phaseType.recommendedCalendarLitColor()
-                                }
+                            items(
+                                items = uiState.monthMilestones,
+                                key = { it.date.toPackedKey() }
+                            ) { milestone ->
                                 MilestoneChipCard(
                                     milestone = milestone,
                                     isSelected = milestone.date == uiState.selectedDate,
-                                    moonLitColor = phaseColor,
+                                    moonLitColor = milestone.phaseType.recommendedCalendarLitColor(),
                                     isNorthernHemisphere = uiState.isNorthernHemisphere,
                                     onClick = { onSelectDate(milestone.date) }
                                 )
@@ -349,14 +367,10 @@ fun CalendarScreen(
                 }
             }
 
-            // 3. Selected Day Lunar & Almanac Inspector Card (with custom gradient skin)
-            item {
+            // 3. Selected Day Lunar & Almanac Inspector Card
+            item(key = "selected_day_inspector") {
                 val info = uiState.selectedDayLunarInfo
-                val selectedDayMoonColor = if (skin.isCustomApplied) {
-                    customMoonLitColor
-                } else {
-                    info.phaseType.recommendedCalendarLitColor()
-                }
+                val selectedDayMoonColor = info.phaseType.recommendedCalendarLitColor()
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f)
@@ -366,17 +380,12 @@ fun CalendarScreen(
                         .fillMaxWidth()
                         .testTag("selected_day_detail_card")
                 ) {
-                    ModuleSkinBox(
-                        skin = skin,
-                        alphaIntensity = 0.45f,
-                        modifier = Modifier.fillMaxWidth()
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(14.dp)
-                        ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -427,9 +436,15 @@ fun CalendarScreen(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Text(
-                                        text = "Distancia: ${info.distanceKm} km  •  ${info.zodiacSign}",
+                                        text = "Distancia: ${info.distanceKm} km  •  ${info.zodiacSign}" +
+                                            if (info.isSupermoon) "  •  Superluna" else "",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "Salida lunar: ${info.moonriseTime}  •  Puesta: ${info.moonsetTime}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary
                                     )
                                 }
                             }
@@ -444,69 +459,123 @@ fun CalendarScreen(
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
-                                        SeleniaIconBadge(
-                                            icon = LunarAlmanacCategory.HAIR_CARE.iconVector(),
-                                            tint = LunarAlmanacCategory.HAIR_CARE.accentColor(),
-                                            size = 26.dp,
-                                            iconSize = 14.dp
-                                        )
-                                        Text(
-                                            text = "Cabello: ${info.phaseType.hairActionBadge}  •  Piel: ${info.phaseType.beautyActionBadge}",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            SeleniaIconBadge(
+                                                icon = LunarAlmanacCategory.HAIR_CARE.iconVector(),
+                                                tint = LunarAlmanacCategory.HAIR_CARE.accentColor(),
+                                                size = 24.dp,
+                                                iconSize = 13.dp
+                                            )
+                                            Column {
+                                                Text(
+                                                    text = "Cabello",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Text(
+                                                    text = info.phaseType.hairActionBadge,
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            SeleniaIconBadge(
+                                                icon = LunarAlmanacCategory.BEAUTY_SKIN.iconVector(),
+                                                tint = LunarAlmanacCategory.BEAUTY_SKIN.accentColor(),
+                                                size = 24.dp,
+                                                iconSize = 13.dp
+                                            )
+                                            Column {
+                                                Text(
+                                                    text = "Belleza y Piel",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Text(
+                                                    text = info.phaseType.beautyActionBadge,
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
                                     }
+
                                     Row(
-                                        verticalAlignment = Alignment.Top,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
-                                        SeleniaIconBadge(
-                                            icon = LunarAlmanacCategory.BEAUTY_SKIN.iconVector(),
-                                            tint = LunarAlmanacCategory.BEAUTY_SKIN.accentColor(),
-                                            size = 24.dp,
-                                            iconSize = 13.dp
-                                        )
-                                        Text(
-                                            text = info.phaseType.beautySkinTip,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                    Row(
-                                        verticalAlignment = Alignment.Top,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        SeleniaIconBadge(
-                                            icon = LunarAlmanacCategory.GARDENING.iconVector(),
-                                            tint = LunarAlmanacCategory.GARDENING.accentColor(),
-                                            size = 24.dp,
-                                            iconSize = 13.dp
-                                        )
-                                        Text(
-                                            text = info.phaseType.gardeningTip,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    Row(
-                                        verticalAlignment = Alignment.Top,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        SeleniaIconBadge(
-                                            icon = LunarAlmanacCategory.ASTRONOMY.iconVector(),
-                                            tint = LunarAlmanacCategory.ASTRONOMY.accentColor(),
-                                            size = 24.dp,
-                                            iconSize = 13.dp
-                                        )
-                                        Text(
-                                            text = info.phaseType.stargazingTip,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            SeleniaIconBadge(
+                                                icon = LunarAlmanacCategory.WELLNESS.iconVector(),
+                                                tint = LunarAlmanacCategory.WELLNESS.accentColor(),
+                                                size = 24.dp,
+                                                iconSize = 13.dp
+                                            )
+                                            Column {
+                                                Text(
+                                                    text = "Bienestar",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Text(
+                                                    text = info.phaseType.wellnessActionBadge,
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            SeleniaIconBadge(
+                                                icon = LunarAlmanacCategory.GARDENING.iconVector(),
+                                                tint = LunarAlmanacCategory.GARDENING.accentColor(),
+                                                size = 24.dp,
+                                                iconSize = 13.dp
+                                            )
+                                            Column {
+                                                Text(
+                                                    text = "Savia y Jardín",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Text(
+                                                    text = if (info.phaseFraction <= 0.5) "Savia ascendente" else "Savia en raíces",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -525,7 +594,7 @@ fun CalendarScreen(
                                     modifier = Modifier.testTag("inspect_moon_observatory_button")
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.NightlightRound,
+                                        imageVector = SeleniaVectorIcons.NightlightRound,
                                         contentDescription = null,
                                         modifier = Modifier.size(18.dp)
                                     )
@@ -538,7 +607,7 @@ fun CalendarScreen(
                                     modifier = Modifier.testTag("send_day_to_calc_button")
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Calculate,
+                                        imageVector = SeleniaVectorIcons.Calculate,
                                         contentDescription = null,
                                         modifier = Modifier.size(18.dp)
                                     )
@@ -547,12 +616,11 @@ fun CalendarScreen(
                                 }
                             }
                         }
-                    }
                 }
             }
 
             // 4. Personal Notes & Ephemeris Agenda for Selected Day
-            item {
+            item(key = "notes_card") {
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surface
@@ -613,23 +681,49 @@ fun CalendarScreen(
                                         .fillMaxWidth()
                                         .testTag("calendar_note_input")
                                 )
-                                Row(
+                                FlowRow(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    listOf("Personal", "Astronomía", "Siembra", "Cálculo").forEach { cat ->
+                                    NOTE_CATEGORIES.forEach { cat ->
                                         FilterChip(
                                             selected = noteCategory == cat,
                                             onClick = { noteCategory = cat },
                                             label = { Text(cat) }
                                         )
                                     }
+                                    FilterChip(
+                                        selected = noteReminder,
+                                        onClick = {
+                                            if (!noteReminder) {
+                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                                    !SeleniaAlertManager.hasNotificationPermission(context)
+                                                ) {
+                                                    notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                                } else {
+                                                    noteReminder = true
+                                                }
+                                            } else {
+                                                noteReminder = false
+                                            }
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Default.Notifications,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        },
+                                        label = { Text(stringResource(R.string.note_reminder_toggle)) },
+                                        modifier = Modifier.testTag("note_reminder_chip")
+                                    )
                                 }
                                 Button(
                                     onClick = {
                                         if (noteTitle.isNotBlank()) {
-                                            onAddNote(noteTitle, noteCategory)
+                                            onAddNote(noteTitle, noteCategory, noteReminder)
                                             noteTitle = ""
+                                            noteReminder = false
                                             showAddNoteForm = false
                                         }
                                     },
@@ -692,16 +786,10 @@ private fun CalendarDayCellItem(
     isSelected: Boolean,
     isNorthernHemisphere: Boolean,
     hasNotes: Boolean,
-    moonLitColor: Color,
-    isCustomSkin: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val effectiveCellMoonColor = if (isCustomSkin) {
-        moonLitColor
-    } else {
-        cell.lunarInfo.phaseType.recommendedCalendarLitColor()
-    }
+    val effectiveCellMoonColor = cell.lunarInfo.phaseType.recommendedCalendarLitColor()
 
     val borderColor = when {
         isSelected -> MaterialTheme.colorScheme.primary
@@ -734,7 +822,7 @@ private fun CalendarDayCellItem(
                 color = borderColor,
                 shape = RoundedCornerShape(12.dp)
             )
-            .clickable(onClick = onClick)
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(vertical = 4.dp, horizontal = 2.dp)
             .testTag("calendar_day_${cell.date.toStorageKey()}")
     ) {
@@ -850,11 +938,24 @@ private fun NoteItemRow(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = note.category.uppercase(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = note.category.uppercase(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    if (note.reminderEnabled) {
+                        Icon(
+                            imageVector = Icons.Default.Notifications,
+                            contentDescription = "Recordatorio activo",
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
+                }
                 Text(
                     text = note.title,
                     style = MaterialTheme.typography.bodyMedium,
@@ -868,7 +969,7 @@ private fun NoteItemRow(
                 modifier = Modifier.testTag("delete_note_${note.id}")
             ) {
                 Icon(
-                    imageVector = Icons.Default.DeleteOutline,
+                    imageVector = SeleniaVectorIcons.DeleteOutline,
                     contentDescription = "Eliminar nota",
                     tint = MaterialTheme.colorScheme.error
                 )

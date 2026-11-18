@@ -93,7 +93,7 @@ jobs:
               -keyalg RSA \
               -keysize 2048 \
               -validity 10000 \
-              -dname "CN=Selenia Lunar,OU=Mobile,O=Selenia,L=Madrid,S=Madrid,C=ES"
+              -dname "CN=TodUno,OU=Mobile,O=TodUno,L=Madrid,S=Madrid,C=ES"
             echo "KEYSTORE_PATH=${GITHUB_WORKSPACE}/my-upload-key.jks" >> "$GITHUB_ENV"
             echo "STORE_PASSWORD=selenia123" >> "$GITHUB_ENV"
             echo "KEY_PASSWORD=selenia123" >> "$GITHUB_ENV"
@@ -108,14 +108,14 @@ jobs:
       - name: Preparar archivos APK para distribución
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk dist/Selenia-Luna-y-Calc-release.apk
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Selenia-Luna-y-Calc-debug.apk
+          cp app/build/outputs/apk/release/app-release.apk dist/TodUno-release.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/TodUno-debug.apk
           ls -lh dist/
 
       - name: Subir APKs como Artifact de GitHub Actions
         uses: actions/upload-artifact@v4
         with:
-          name: Selenia-Luna-y-Calc-APKs
+          name: TodUno-APKs
           path: dist/*.apk
           if-no-files-found: error
 
@@ -136,14 +136,14 @@ jobs:
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: "Selenia: Luna y Calc ${{ steps.version.outputs.tag }}"
+          name: "TodUno ${{ steps.version.outputs.tag }}"
           body: |
-            ## 🌙 Selenia: Calendario, Fases de la Luna y Calculadora (${{ steps.version.outputs.tag }})
+            ## 🌙 TodUno: Calendario, Luna, Reloj y Calculadora (${{ steps.version.outputs.tag }})
 
             ### 📦 Descarga directa de APK
             Descarga e instala cualquiera de los archivos adjuntos en tu dispositivo Android (Android 7.0 / API 24 o superior):
-            - **`Selenia-Luna-y-Calc-release.apk`**: Versión optimizada y firmada lista para instalar.
-            - **`Selenia-Luna-y-Calc-debug.apk`**: Versión de depuración.
+            - **`TodUno-release.apk`**: Versión optimizada y firmada lista para instalar.
+            - **`TodUno-debug.apk`**: Versión de depuración.
 
             ### ✨ Características incluidas (4 en 1)
             - 📅 **Calendario Lunar Mensual**: Fases de la luna día por día, hitos mensuales y notas personales por fecha.
@@ -151,8 +151,8 @@ jobs:
             - ⌚ **Reloj Astronómico, Mundial, Cronómetro y Temporizador**: Reloj analógico con complicación lunar + digital (12h/24h, UTC y Tiempo Sideral GMST), husos horarios mundiales, cronómetro con vueltas y temporizador circular.
             - 🧮 **Calculadora Científica y de Fechas**: Funciones trigonométricas, constantes astronómicas (`29.5306 días`), conversión entre días y meses sinódicos, y cálculo de intervalos entre fechas.
           files: |
-            dist/Selenia-Luna-y-Calc-release.apk
-            dist/Selenia-Luna-y-Calc-debug.apk
+            dist/TodUno-release.apk
+            dist/TodUno-debug.apk
           draft: false
           prerelease: false
         env:

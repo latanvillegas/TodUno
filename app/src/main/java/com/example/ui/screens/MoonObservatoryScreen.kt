@@ -1,11 +1,18 @@
 package com.example.ui.screens
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,26 +23,27 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.Today
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -45,30 +53,46 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.domain.CelestialEventKind
 import com.example.domain.LunarAlmanacCategory
 import com.example.domain.LunarAstronomer
 import com.example.domain.LunarDayInfo
 import com.example.domain.LunarTraditionalGoal
 import com.example.domain.MoonPhaseType
 import com.example.domain.SimpleDate
-import com.example.ui.ModuleThemeTarget
+import com.example.notifications.SeleniaAlertManager
 import com.example.ui.SeleniaUiState
 import com.example.ui.components.LunarAtmospherePreset
-import com.example.ui.components.ModuleSkinBox
 import com.example.ui.components.MoonPhaseBadgeIcon
 import com.example.ui.components.RealisticMoonCanvas
 import com.example.ui.components.SeleniaIconBadge
+import com.example.ui.components.SeleniaVectorIcons
 import com.example.ui.components.accentColor
 import com.example.ui.components.iconVector
+import androidx.compose.ui.semantics.Role
 import com.example.ui.components.recommendedCalendarLitColor
 import kotlin.math.roundToInt
 
+private val AFFINITY_STARS = arrayOf(
+    "☆☆☆☆☆",
+    "★☆☆☆☆",
+    "★★☆☆☆",
+    "★★★☆☆",
+    "★★★★☆",
+    "★★★★★"
+)
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MoonObservatoryScreen(
     uiState: SeleniaUiState,
@@ -76,11 +100,22 @@ fun MoonObservatoryScreen(
     onJumpToToday: () -> Unit,
     onSelectDate: (SimpleDate) -> Unit,
     onToggleHemisphere: () -> Unit,
-    onOpenColorCustomizer: () -> Unit = {},
+    onSetLunarAlertsEnabled: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
+    var dragAccumulatedX by remember { mutableFloatStateOf(0f) }
+
+    val lunarAlertsPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            onSetLunarAlertsEnabled(true)
+        }
+    }
+
     val info = uiState.selectedDayLunarInfo
-    val skin = uiState.skinFor(ModuleThemeTarget.MOON_OBSERVATORY)
 
     var selectedAtmosphere by rememberSaveable {
         mutableStateOf(LunarAtmospherePreset.AUTO_PHASE)
@@ -88,36 +123,20 @@ fun MoonObservatoryScreen(
 
     val phaseDynamicColor = info.phaseType.recommendedCalendarLitColor()
 
-    val customMoonLitColor = when {
-        skin.isCustomApplied -> Color(skin.primarySwatch.rgb.r, skin.primarySwatch.rgb.g, skin.primarySwatch.rgb.b)
-        selectedAtmosphere == LunarAtmospherePreset.AUTO_PHASE -> phaseDynamicColor
-        else -> selectedAtmosphere.litColor
-    }
-
-    val customMoonHighlight = when {
-        skin.isCustomApplied -> {
-            val sec = skin.secondarySwatch.rgb
-            Color(
-                red = ((sec.r + 255) / 2).coerceIn(0, 255),
-                green = ((sec.g + 255) / 2).coerceIn(0, 255),
-                blue = ((sec.b + 255) / 2).coerceIn(0, 255)
-            )
-        }
-        selectedAtmosphere == LunarAtmospherePreset.AUTO_PHASE -> Color(0xFFFFFDE7)
-        else -> selectedAtmosphere.highlightColor
-    }
-
-    val customMoonShadow = if (skin.isCustomApplied) {
-        Color(0xFF101733)
+    val customMoonLitColor = if (selectedAtmosphere == LunarAtmospherePreset.AUTO_PHASE) {
+        phaseDynamicColor
     } else {
-        selectedAtmosphere.shadowColor
+        selectedAtmosphere.litColor
     }
 
-    val customCoronaSecondary = if (skin.isCustomApplied) {
-        Color(skin.secondarySwatch.rgb.r, skin.secondarySwatch.rgb.g, skin.secondarySwatch.rgb.b)
+    val customMoonHighlight = if (selectedAtmosphere == LunarAtmospherePreset.AUTO_PHASE) {
+        Color(0xFFFFFDE7)
     } else {
-        selectedAtmosphere.coronaSecondaryColor
+        selectedAtmosphere.highlightColor
     }
+
+    val customMoonShadow = selectedAtmosphere.shadowColor
+    val customCoronaSecondary = selectedAtmosphere.coronaSecondaryColor
 
     Box(
         modifier = modifier.fillMaxSize(),
@@ -132,94 +151,117 @@ fun MoonObservatoryScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // 1. Hero Lunar Sphere & Interactive Date Stepper with custom Moon Skin + 6 3D Atmospheres
-            item {
+            item(key = "hero_moon") {
                 Card(
                     shape = MaterialTheme.shapes.extraLarge,
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surface
                     ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    ModuleSkinBox(
-                        skin = skin,
-                        alphaIntensity = 0.42f,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(
-                                    if (!skin.isCustomApplied) {
-                                        Brush.verticalGradient(
-                                            colors = listOf(
-                                                MaterialTheme.colorScheme.background,
-                                                MaterialTheme.colorScheme.surface,
-                                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
-                                            )
-                                        )
-                                    } else {
-                                        Brush.verticalGradient(
-                                            listOf(Color.Transparent, Color.Transparent)
-                                        )
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .pointerInput(uiState.selectedDate) {
+                            detectHorizontalDragGestures(
+                                onDragStart = { dragAccumulatedX = 0f },
+                                onDragEnd = {
+                                    if (dragAccumulatedX > 75f) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        onStepDay(-1)
+                                    } else if (dragAccumulatedX < -75f) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        onStepDay(1)
                                     }
+                                    dragAccumulatedX = 0f
+                                }
+                            ) { _, dragAmount ->
+                                dragAccumulatedX += dragAmount
+                            }
+                        }
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        MaterialTheme.colorScheme.background,
+                                        MaterialTheme.colorScheme.surface,
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+                                    )
                                 )
-                                .padding(20.dp)
-                        ) {
-                            Row(
+                            )
+                            .padding(20.dp)
+                    ) {
+                            FlowRow(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                FilterChip(
-                                    selected = true,
-                                    onClick = onToggleHemisphere,
-                                    label = {
-                                        Text(
-                                            if (uiState.isNorthernHemisphere) {
-                                                stringResource(R.string.hemisphere_north)
-                                            } else {
-                                                stringResource(R.string.hemisphere_south)
-                                            }
-                                        )
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.Public,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    },
-                                    modifier = Modifier.testTag("hemisphere_toggle_chip")
-                                )
-
                                 Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    IconButton(
-                                        onClick = onOpenColorCustomizer,
-                                        modifier = Modifier.testTag("moon_customize_color_button")
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Palette,
-                                            contentDescription = "Personalizar color de la Luna",
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                    AssistChip(
-                                        onClick = onJumpToToday,
-                                        label = { Text(stringResource(R.string.today_button)) },
+                                    FilterChip(
+                                        selected = true,
+                                        onClick = onToggleHemisphere,
+                                        label = {
+                                            Text(
+                                                if (uiState.isNorthernHemisphere) {
+                                                    stringResource(R.string.hemisphere_north)
+                                                } else {
+                                                    stringResource(R.string.hemisphere_south)
+                                                }
+                                            )
+                                        },
                                         leadingIcon = {
                                             Icon(
-                                                imageVector = Icons.Default.Today,
+                                                imageVector = SeleniaVectorIcons.Public,
                                                 contentDescription = null,
                                                 modifier = Modifier.size(16.dp)
                                             )
                                         },
-                                        modifier = Modifier.testTag("moon_today_button")
+                                        modifier = Modifier.testTag("hemisphere_toggle_chip")
+                                    )
+
+                                    FilterChip(
+                                        selected = uiState.lunarAlertsEnabled,
+                                        onClick = {
+                                            if (!uiState.lunarAlertsEnabled) {
+                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                                    !SeleniaAlertManager.hasNotificationPermission(context)
+                                                ) {
+                                                    lunarAlertsPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                                } else {
+                                                    onSetLunarAlertsEnabled(true)
+                                                }
+                                            } else {
+                                                onSetLunarAlertsEnabled(false)
+                                            }
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Default.Notifications,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                        },
+                                        label = { Text("Alertas") },
+                                        modifier = Modifier.testTag("lunar_alerts_toggle_chip")
                                     )
                                 }
+
+                                AssistChip(
+                                    onClick = onJumpToToday,
+                                    label = { Text(stringResource(R.string.today_button)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = SeleniaVectorIcons.Today,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    },
+                                    modifier = Modifier.testTag("moon_today_button")
+                                )
                             }
 
                             Spacer(modifier = Modifier.height(6.dp))
@@ -270,16 +312,39 @@ fun MoonObservatoryScreen(
                                 textAlign = TextAlign.Center
                             )
 
+                            if (info.isSupermoon) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Surface(
+                                    color = Color(0xFFFFD54F).copy(alpha = 0.22f),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.border(
+                                        width = 1.dp,
+                                        color = Color(0xFFFFD54F),
+                                        shape = RoundedCornerShape(10.dp)
+                                    )
+                                ) {
+                                    Text(
+                                        text = "★ SUPERLUNA DE PERIGEO (${info.distanceKm} km)",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFFFD54F),
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+
                             Spacer(modifier = Modifier.height(10.dp))
 
                             // 6-Mode 3D Lunar Atmosphere Selector Strip
-                            androidx.compose.foundation.lazy.LazyRow(
+                            LazyRow(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                items(LunarAtmospherePreset.entries.size) { index ->
-                                    val preset = LunarAtmospherePreset.entries[index]
-                                    val isSelected = !skin.isCustomApplied && selectedAtmosphere == preset
+                                items(
+                                    items = LunarAtmospherePreset.entries,
+                                    key = { it.name }
+                                ) { preset ->
+                                    val isSelected = selectedAtmosphere == preset
                                     val dotColor = if (preset == LunarAtmospherePreset.AUTO_PHASE) {
                                         phaseDynamicColor
                                     } else {
@@ -292,7 +357,7 @@ fun MoonObservatoryScreen(
                                             Box(
                                                 modifier = Modifier
                                                     .size(12.dp)
-                                                    .clip( androidx.compose.foundation.shape.CircleShape)
+                                                    .clip(CircleShape)
                                                     .background(dotColor)
                                             )
                                         },
@@ -303,11 +368,7 @@ fun MoonObservatoryScreen(
                             }
 
                             Text(
-                                text = if (skin.isCustomApplied) {
-                                    "Tema Estudio de Color activo: ${skin.primarySwatch.label} (${skin.primarySwatch.hex})"
-                                } else {
-                                    "${selectedAtmosphere.spanishName}: ${selectedAtmosphere.description}"
-                                },
+                                text = "${selectedAtmosphere.spanishName}: ${selectedAtmosphere.description}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = TextAlign.Center,
@@ -316,7 +377,15 @@ fun MoonObservatoryScreen(
 
                             Spacer(modifier = Modifier.height(14.dp))
 
-                            // Date Stepper Row: -7d, -1d, +1d, +7d
+                            // Date Stepper Row: -7d, -1d, [Relative Day Offset], +1d, +7d
+                            val dayDeltaFromToday = remember(uiState.today, uiState.selectedDate) {
+                                LunarAstronomer.daysBetween(uiState.today, uiState.selectedDate)
+                            }
+                            val relativeDayLabel = when {
+                                dayDeltaFromToday == 0 -> "Hoy"
+                                dayDeltaFromToday > 0 -> "+$dayDeltaFromToday d"
+                                else -> "$dayDeltaFromToday d"
+                            }
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
@@ -341,7 +410,7 @@ fun MoonObservatoryScreen(
                                     shape = RoundedCornerShape(16.dp)
                                 ) {
                                     Text(
-                                        text = "${"%.1f".format(info.illuminationPercent)}% luz",
+                                        text = relativeDayLabel,
                                         style = MaterialTheme.typography.labelLarge,
                                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
@@ -362,13 +431,12 @@ fun MoonObservatoryScreen(
                                     modifier = Modifier.testTag("moon_step_plus_7")
                                 )
                             }
-                        }
                     }
                 }
             }
 
             // 2. 8-Phase Interactive Synodic Cycle Strip
-            item {
+            item(key = "synodic_strip") {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     shape = MaterialTheme.shapes.large,
@@ -391,7 +459,7 @@ fun MoonObservatoryScreen(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Día ${"%.1f".format(info.lunarAgeDays)} / 29.5",
+                                text = "${(info.phaseFraction * 100).roundToInt()}% del ciclo",
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -450,7 +518,7 @@ fun MoonObservatoryScreen(
             }
 
             // 3. Astronomical Telemetry Grid (4 cards)
-            item {
+            item(key = "telemetry_grid") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -465,7 +533,7 @@ fun MoonObservatoryScreen(
                         TelemetryStatCard(
                             label = stringResource(R.string.lunar_age_label),
                             value = "${"%.2f".format(info.lunarAgeDays)} d",
-                            subtitle = "${(info.phaseFraction * 100).roundToInt()}% del mes sinódico",
+                            subtitle = "Mes sinódico de 29.53 días",
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -486,11 +554,28 @@ fun MoonObservatoryScreen(
                             modifier = Modifier.weight(1f)
                         )
                     }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        TelemetryStatCard(
+                            label = stringResource(R.string.moonrise_moonset_label),
+                            value = "↑ ${info.moonriseTime} • ↓ ${info.moonsetTime}",
+                            subtitle = "Efeméride estimada local",
+                            modifier = Modifier.weight(1f)
+                        )
+                        TelemetryStatCard(
+                            label = stringResource(R.string.meridian_transit_label),
+                            value = info.meridianTransitTime,
+                            subtitle = if (info.isSupermoon) "Superluna en perigeo" else "Culminación lunar",
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
             }
 
             // 4. Complete Traditional Lunar Guide & Almanac (Beauty, Hair, Wellness, Gardening, Astronomy, Tides, Fishing, Home)
-            item {
+            item(key = "almanac_section") {
                 TraditionalLunarAlmanacSection(
                     info = info,
                     selectedDate = uiState.selectedDate,
@@ -501,7 +586,7 @@ fun MoonObservatoryScreen(
             }
 
             // 5. Upcoming 4 Major Phases
-            item {
+            item(key = "upcoming_phases") {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     shape = MaterialTheme.shapes.large,
@@ -525,7 +610,7 @@ fun MoonObservatoryScreen(
                                 shape = MaterialTheme.shapes.medium,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { onSelectDate(milestone.date) }
+                                    .clickable(role = Role.Button) { onSelectDate(milestone.date) }
                                     .testTag("upcoming_phase_${milestone.date.toStorageKey()}")
                             ) {
                                 Row(
@@ -575,6 +660,125 @@ fun MoonObservatoryScreen(
                     }
                 }
             }
+
+            // 6. Upcoming Supermoons & Solar/Lunar Eclipses (2026–2029)
+            if (uiState.upcomingCelestialEvents.isNotEmpty()) {
+                item(key = "celestial_events") {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = MaterialTheme.shapes.large,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("celestial_events_card")
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.upcoming_eclipses_supermoons),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "Toca cualquier eclipse o superluna para viajar directamente a esa fecha en el observatorio.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            uiState.upcomingCelestialEvents.forEach { event ->
+                                val deltaDays = LunarAstronomer.daysBetween(uiState.selectedDate, event.date)
+                                val badgeColor = when (event.kind) {
+                                    CelestialEventKind.SUPERMOON -> Color(0xFFFFD54F)
+                                    CelestialEventKind.LUNAR_ECLIPSE -> Color(0xFFFF7043)
+                                    CelestialEventKind.SOLAR_ECLIPSE -> Color(0xFF4DD0E1)
+                                }
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                                    shape = MaterialTheme.shapes.medium,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(
+                                            width = 1.dp,
+                                            color = badgeColor.copy(alpha = 0.45f),
+                                            shape = MaterialTheme.shapes.medium
+                                        )
+                                        .clickable(role = Role.Button) { onSelectDate(event.date) }
+                                        .testTag("celestial_event_${event.date.toStorageKey()}")
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                MoonPhaseBadgeIcon(
+                                                    phaseType = event.phaseType,
+                                                    size = 28.dp,
+                                                    litColor = badgeColor,
+                                                    southernHemisphere = !uiState.isNorthernHemisphere
+                                                )
+                                                Column {
+                                                    Text(
+                                                        text = event.title,
+                                                        style = MaterialTheme.typography.titleSmall,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = badgeColor
+                                                    )
+                                                    Text(
+                                                        text = event.date.formatSpanishLong().replaceFirstChar { it.uppercase() },
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                }
+                                            }
+                                            Surface(
+                                                color = badgeColor.copy(alpha = 0.2f),
+                                                shape = RoundedCornerShape(10.dp)
+                                            ) {
+                                                Text(
+                                                    text = when {
+                                                        deltaDays == 0 -> "Hoy"
+                                                        deltaDays > 0 -> "+${deltaDays}d"
+                                                        else -> "${deltaDays}d"
+                                                    },
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = badgeColor,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            text = event.subtitle,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = "Visibilidad: ${event.visibilityRegion}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.secondary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -594,11 +798,13 @@ private fun TraditionalLunarAlmanacSection(
         mutableStateOf(LunarTraditionalGoal.FAST_HAIR_GROWTH)
     }
 
-    val allGuides = info.phaseType.almanacGuides()
-    val visibleGuides = if (selectedCategory == LunarAlmanacCategory.ALL) {
-        allGuides
-    } else {
-        allGuides.filter { it.category == selectedCategory }
+    val visibleGuides = remember(info.phaseType, selectedCategory) {
+        val allGuides = info.phaseType.almanacGuides()
+        if (selectedCategory == LunarAlmanacCategory.ALL) {
+            allGuides
+        } else {
+            allGuides.filter { it.category == selectedCategory }
+        }
     }
 
     val upcomingGoalDates = remember(selectedDate, selectedGoal) {
@@ -640,34 +846,15 @@ private fun TraditionalLunarAlmanacSection(
                     }
                 }
 
-                // Quick Summary Pill Strip for Hair + Beauty on this day with custom vector badges
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    QuickAlmanacHighlightPill(
-                        icon = LunarAlmanacCategory.HAIR_CARE.iconVector(),
-                        tint = LunarAlmanacCategory.HAIR_CARE.accentColor(),
-                        label = "Cabello",
-                        value = info.phaseType.hairActionBadge,
-                        modifier = Modifier.weight(1f)
-                    )
-                    QuickAlmanacHighlightPill(
-                        icon = LunarAlmanacCategory.BEAUTY_SKIN.iconVector(),
-                        tint = LunarAlmanacCategory.BEAUTY_SKIN.accentColor(),
-                        label = "Belleza y Piel",
-                        value = info.phaseType.beautyActionBadge,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
                 // Category Filter Row with vector leading icons
-                androidx.compose.foundation.lazy.LazyRow(
+                LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    items(com.example.domain.LunarAlmanacCategory.entries.size) { index ->
-                        val cat = com.example.domain.LunarAlmanacCategory.entries[index]
+                    items(
+                        items = LunarAlmanacCategory.entries,
+                        key = { it.name }
+                    ) { cat ->
                         val catIcon = cat.iconVector()
                         val catColor = cat.accentColor()
                         FilterChip(
@@ -726,12 +913,14 @@ private fun TraditionalLunarAlmanacSection(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                androidx.compose.foundation.lazy.LazyRow(
+                LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    items(com.example.domain.LunarTraditionalGoal.entries.size) { idx ->
-                        val goal = com.example.domain.LunarTraditionalGoal.entries[idx]
+                    items(
+                        items = LunarTraditionalGoal.entries,
+                        key = { it.name }
+                    ) { goal ->
                         val goalIcon = goal.iconVector()
                         val goalColor = goal.accentColor()
                         FilterChip(
@@ -886,47 +1075,6 @@ private fun TraditionalLunarAlmanacSection(
     }
 }
 
-@Composable
-private fun QuickAlmanacHighlightPill(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    tint: Color,
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-        shape = RoundedCornerShape(12.dp),
-        modifier = modifier
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            com.example.ui.components.SeleniaIconBadge(
-                icon = icon,
-                tint = tint,
-                size = 32.dp,
-                iconSize = 16.dp
-            )
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = value,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun TelemetryStatCard(
@@ -1030,7 +1178,7 @@ private fun AlmanacTipRow(
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "Afinidad lunar: " + "★".repeat(scoreOutOfFive) + "☆".repeat((5 - scoreOutOfFive).coerceAtLeast(0)),
+                text = "Afinidad lunar: ${AFFINITY_STARS[scoreOutOfFive.coerceIn(0, 5)]}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary
             )

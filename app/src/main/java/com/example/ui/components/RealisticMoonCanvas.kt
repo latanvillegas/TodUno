@@ -1,11 +1,12 @@
 package com.example.ui.components
 
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -35,6 +36,10 @@ private val COORDINATE_RING_STROKE = Stroke(width = 1.3f)
 // Precomputed 12-tick astrolabe ring angles (every 30 degrees)
 private val ASTROLABE_COS = FloatArray(12) { i -> cos(i * PI / 6.0).toFloat() }
 private val ASTROLABE_SIN = FloatArray(12) { i -> sin(i * PI / 6.0).toFloat() }
+
+// Precomputed 6-ray Tycho ejecta angles
+private val TYCHO_RAY_COS = FloatArray(6) { i -> cos((-0.75 + i * 0.30) * PI).toFloat() }
+private val TYCHO_RAY_ABS_SIN = FloatArray(6) { i -> abs(sin((-0.75 + i * 0.30) * PI)).toFloat() }
 
 /**
  * 6 curated 3D astronomical color atmospheres for the Moon Observatory.
@@ -106,11 +111,7 @@ enum class LunarAtmospherePreset(
 }
 
 /**
- * Returns the recommended 3D astronomical color palette for a given [MoonPhaseType] in the calendar:
- * - Waxing phases: Warm Solar Gold & Pearl (#FFE082 -> #FFB300) for ascending energy.
- * - Full Moon: Radiant Supermoon Gold-Amber (#FFD54F -> #FF8F00) with high specular brilliance.
- * - Waning phases: Celestial Silver-Cyan (#80DEEA -> #26C6DA) to visually distinguish waning vs waxing weeks.
- * - New Moon: Deep Sidereal Sapphire with Cyan Earthshine rim (#4DD0E1) so New Moon cells remain visible in 3D.
+ * Returns the recommended 3D astronomical color palette for a given [MoonPhaseType] in the calendar.
  */
 fun MoonPhaseType.recommendedCalendarLitColor(): Color = when (this) {
     MoonPhaseType.NEW_MOON -> Color(0xFF4DD0E1)
@@ -124,10 +125,9 @@ fun MoonPhaseType.recommendedCalendarLitColor(): Color = when (this) {
 }
 
 /**
- * Renders a realistic 3D astronomical Moon disk using Canvas with zero per-frame Path allocations
- * and precomputed trigonometry/chord tables.
- * [phaseFraction] ranges from 0.0 (New Moon) -> 0.25 (First Quarter) -> 0.5 (Full Moon) -> 0.75 (Last Quarter) -> 1.0.
- * [isNorthernHemisphere] controls whether waxing illumination grows from the right (North) or left (South).
+ * Renders a realistic 3D astronomical Moon disk using [drawWithCache] so all native Skia [Brush]
+ * shaders, [Stroke] instances, and terminator [Path] geometry are cached across scroll and frame redraws
+ * with zero per-frame heap allocations.
  */
 @Composable
 fun RealisticMoonCanvas(
@@ -140,98 +140,52 @@ fun RealisticMoonCanvas(
     shadowColor: Color = Color(0xFF101733),
     coronaSecondaryColor: Color = Color(0xFF4DD0E1)
 ) {
-    // Reuse a single Path instance across draw passes to avoid GC churn when rendering 42+ calendar moons.
-    val reusableLitPath = remember { Path() }
+    val cachedLitPath = remember { Path() }
     val lighterShadowColor = remember(shadowColor) { shadowColor.lighter(0.16f) }
     val deepLitTone = remember(litColor) { litColor.darker(0.28f) }
     val rimColor = remember(litColor) { litColor.copy(alpha = 0.56f) }
 
-    Canvas(modifier = modifier.fillMaxSize()) {
-        val minDim = size.minDimension
-        if (minDim <= 0f) return@Canvas
-        val center = Offset(size.width / 2f, size.height / 2f)
-        val radius = if (showAmbientGlow) minDim * 0.37f else minDim * 0.45f
-        val isLargeObservatoryMoon = radius > 45f
-
-        val phaseAngle = phaseFraction * 2.0 * PI
-        val illuminationRatio = ((1.0 - cos(phaseAngle)) / 2.0).toFloat()
-
-        // 1. Optional atmospheric starlight, lunar corona glow & telescope astrolabe bezel
-        if (showAmbientGlow) {
-            val glowAlpha = 0.20f + 0.32f * illuminationRatio
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        litColor.copy(alpha = glowAlpha),
-                        coronaSecondaryColor.copy(alpha = glowAlpha * 0.42f),
-                        Color.Transparent
-                    ),
-                    center = center,
-                    radius = radius * 1.48f
-                ),
-                radius = radius * 1.48f,
-                center = center
-            )
-
-            // Celestial coordinate ring around the moon
-            val ringRadius = radius * 1.18f
-            drawCircle(
-                color = litColor.copy(alpha = 0.30f),
-                radius = ringRadius,
-                center = center,
-                style = COORDINATE_RING_STROKE
-            )
-
-            // For the large Hero Moon in the Observatory, render 12 astrolabe degree ticks + starlight points
-            if (isLargeObservatoryMoon) {
-                for (i in 0 until 12) {
-                    val isCardinal = i % 3 == 0
-                    val innerR = if (isCardinal) ringRadius * 0.94f else ringRadius * 0.97f
-                    val outerR = if (isCardinal) ringRadius * 1.06f else ringRadius * 1.03f
-                    val cosA = ASTROLABE_COS[i]
-                    val sinA = ASTROLABE_SIN[i]
-                    drawLine(
-                        color = if (isCardinal) litColor.copy(alpha = 0.65f) else coronaSecondaryColor.copy(alpha = 0.40f),
-                        start = Offset(center.x + cosA * innerR, center.y + sinA * innerR),
-                        end = Offset(center.x + cosA * outerR, center.y + sinA * outerR),
-                        strokeWidth = if (isCardinal) 2.2f else 1.2f,
-                        cap = StrokeCap.Round
-                    )
+    Spacer(
+        modifier = modifier
+            .fillMaxSize()
+            .drawWithCache {
+                val minDim = size.minDimension
+                if (minDim <= 0f) {
+                    return@drawWithCache onDrawBehind {}
                 }
-            }
-        }
+                val center = Offset(size.width / 2f, size.height / 2f)
+                val radius = if (showAmbientGlow) minDim * 0.37f else minDim * 0.45f
+                val isLargeObservatoryMoon = radius > 45f
 
-        // 2. Base 3D dark lunar sphere (earthshine / night side with volumetric lighting)
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    lighterShadowColor,
-                    shadowColor,
-                    Color(0xFF060A17)
-                ),
-                center = Offset(center.x - radius * 0.25f, center.y - radius * 0.25f),
-                radius = radius * 1.25f
-            ),
-            radius = radius,
-            center = center
-        )
+                val phaseAngle = phaseFraction * 2.0 * PI
+                val illuminationRatio = ((1.0 - cos(phaseAngle)) / 2.0).toFloat()
 
-        // Subtle maria on dark side (earthshine effect)
-        drawLunarMaria(center, radius, alpha = 0.12f, isIlluminatedSide = false, litHighlightColor = litHighlightColor)
+                val glowBrush = if (showAmbientGlow) {
+                    val glowAlpha = 0.20f + 0.32f * illuminationRatio
+                    Brush.radialGradient(
+                        colors = listOf(
+                            litColor.copy(alpha = glowAlpha),
+                            coronaSecondaryColor.copy(alpha = glowAlpha * 0.42f),
+                            Color.Transparent
+                        ),
+                        center = center,
+                        radius = radius * 1.48f
+                    )
+                } else {
+                    null
+                }
 
-        // 3. Illuminated spherical portion bounded by limb and elliptical terminator (zero allocation)
-        populateIlluminatedMoonPath(
-            targetPath = reusableLitPath,
-            center = center,
-            radius = radius,
-            phaseFraction = phaseFraction,
-            isNorthernHemisphere = isNorthernHemisphere
-        )
+                val darkSphereBrush = Brush.radialGradient(
+                    colors = listOf(
+                        lighterShadowColor,
+                        shadowColor,
+                        Color(0xFF060A17)
+                    ),
+                    center = Offset(center.x - radius * 0.25f, center.y - radius * 0.25f),
+                    radius = radius * 1.25f
+                )
 
-        clipPath(reusableLitPath) {
-            // 3-stop 3D volumetric sphere shader
-            drawCircle(
-                brush = Brush.radialGradient(
+                val litSphereBrush = Brush.radialGradient(
                     colors = listOf(
                         litHighlightColor,
                         litColor,
@@ -239,30 +193,107 @@ fun RealisticMoonCanvas(
                     ),
                     center = Offset(center.x - radius * 0.22f, center.y - radius * 0.22f),
                     radius = radius * 1.22f
-                ),
-                radius = radius,
-                center = center
-            )
-            // Realistic lunar maria, 3D rimmed craters & Tycho ejecta rays on the illuminated face
-            drawLunarMaria(center, radius, alpha = 0.24f, isIlluminatedSide = true, litHighlightColor = litHighlightColor)
-        }
+                )
 
-        // 4. Outer 3D rim light (stronger on New Moon + subtle earthshine cyan tint on night limb)
-        val effectiveRimAlpha = if (illuminationRatio < 0.08f) 0.75f else 0.50f
-        drawCircle(
-            brush = Brush.sweepGradient(
-                colors = listOf(
-                    rimColor.copy(alpha = effectiveRimAlpha),
-                    coronaSecondaryColor.copy(alpha = effectiveRimAlpha * 0.7f),
-                    rimColor.copy(alpha = effectiveRimAlpha)
-                ),
-                center = center
-            ),
-            radius = radius,
-            center = center,
-            style = Stroke(width = (minDim * 0.026f).coerceAtLeast(1f))
-        )
-    }
+                val effectiveRimAlpha = if (illuminationRatio < 0.08f) 0.75f else 0.50f
+                val rimBrush = Brush.sweepGradient(
+                    colors = listOf(
+                        rimColor.copy(alpha = effectiveRimAlpha),
+                        coronaSecondaryColor.copy(alpha = effectiveRimAlpha * 0.7f),
+                        rimColor.copy(alpha = effectiveRimAlpha)
+                    ),
+                    center = center
+                )
+                val rimStroke = Stroke(width = (minDim * 0.026f).coerceAtLeast(1f))
+
+                populateIlluminatedMoonPath(
+                    targetPath = cachedLitPath,
+                    center = center,
+                    radius = radius,
+                    phaseFraction = phaseFraction,
+                    isNorthernHemisphere = isNorthernHemisphere
+                )
+
+                val ringColor = litColor.copy(alpha = 0.30f)
+                val cardinalTickColor = litColor.copy(alpha = 0.65f)
+                val minorTickColor = coronaSecondaryColor.copy(alpha = 0.40f)
+
+                onDrawBehind {
+                    // 1. Optional atmospheric starlight, lunar corona glow & telescope astrolabe bezel
+                    if (glowBrush != null) {
+                        drawCircle(
+                            brush = glowBrush,
+                            radius = radius * 1.48f,
+                            center = center
+                        )
+
+                        val ringRadius = radius * 1.18f
+                        drawCircle(
+                            color = ringColor,
+                            radius = ringRadius,
+                            center = center,
+                            style = COORDINATE_RING_STROKE
+                        )
+
+                        if (isLargeObservatoryMoon) {
+                            for (i in 0 until 12) {
+                                val isCardinal = i % 3 == 0
+                                val innerR = if (isCardinal) ringRadius * 0.94f else ringRadius * 0.97f
+                                val outerR = if (isCardinal) ringRadius * 1.06f else ringRadius * 1.03f
+                                val cosA = ASTROLABE_COS[i]
+                                val sinA = ASTROLABE_SIN[i]
+                                drawLine(
+                                    color = if (isCardinal) cardinalTickColor else minorTickColor,
+                                    start = Offset(center.x + cosA * innerR, center.y + sinA * innerR),
+                                    end = Offset(center.x + cosA * outerR, center.y + sinA * outerR),
+                                    strokeWidth = if (isCardinal) 2.2f else 1.2f,
+                                    cap = StrokeCap.Round
+                                )
+                            }
+                        }
+                    }
+
+                    // 2. Base 3D dark lunar sphere (earthshine / night side)
+                    drawCircle(
+                        brush = darkSphereBrush,
+                        radius = radius,
+                        center = center
+                    )
+
+                    drawLunarMaria(
+                        center = center,
+                        radius = radius,
+                        alpha = 0.12f,
+                        isIlluminatedSide = false,
+                        litHighlightColor = litHighlightColor
+                    )
+
+                    // 3. Illuminated spherical portion clipped to prebuilt terminator Path
+                    clipPath(cachedLitPath) {
+                        drawCircle(
+                            brush = litSphereBrush,
+                            radius = radius,
+                            center = center
+                        )
+                        drawLunarMaria(
+                            center = center,
+                            radius = radius,
+                            alpha = 0.24f,
+                            isIlluminatedSide = true,
+                            litHighlightColor = litHighlightColor
+                        )
+                    }
+
+                    // 4. Outer 3D rim light
+                    drawCircle(
+                        brush = rimBrush,
+                        radius = radius,
+                        center = center,
+                        style = rimStroke
+                    )
+                }
+            }
+    )
 }
 
 private fun DrawScope.drawLunarMaria(
@@ -273,13 +304,11 @@ private fun DrawScope.drawLunarMaria(
     litHighlightColor: Color
 ) {
     val mareColor = Color(0xFF4E4944).copy(alpha = alpha)
-    // Oceanus Procellarum & Mare Imbrium (upper left)
     drawCircle(
         color = mareColor,
         radius = radius * 0.28f,
         center = Offset(center.x - radius * 0.28f, center.y - radius * 0.18f)
     )
-    // Mare Serenitatis & Mare Tranquillitatis (center right)
     drawCircle(
         color = mareColor,
         radius = radius * 0.22f,
@@ -290,36 +319,32 @@ private fun DrawScope.drawLunarMaria(
         radius = radius * 0.19f,
         center = Offset(center.x + radius * 0.32f, center.y + radius * 0.08f)
     )
-    // Mare Crisium (far right limb)
     drawCircle(
         color = mareColor,
         radius = radius * 0.11f,
         center = Offset(center.x + radius * 0.58f, center.y - radius * 0.16f)
     )
-    // Mare Nubium & Mare Humorum (lower left-center)
     drawCircle(
         color = mareColor,
         radius = radius * 0.20f,
         center = Offset(center.x - radius * 0.15f, center.y + radius * 0.32f)
     )
 
-    // High-detail 3D craters & Tycho ray system for larger moons (Observatory & Day Inspector)
     if (radius > 28f && isIlluminatedSide) {
         val tychoCenter = Offset(center.x - radius * 0.06f, center.y + radius * 0.54f)
         val copernicusCenter = Offset(center.x - radius * 0.22f, center.y + radius * 0.05f)
         val platoCenter = Offset(center.x - radius * 0.14f, center.y - radius * 0.58f)
 
-        // Subtle Tycho ejecta rays when in Observatory size
         if (radius > 45f) {
             val rayColor = litHighlightColor.copy(alpha = alpha * 0.75f)
+            val rayLen = radius * 0.55f
             for (i in 0 until 6) {
-                val angle = (-0.75f + i * 0.30f) * PI.toFloat()
                 drawLine(
                     color = rayColor,
                     start = tychoCenter,
                     end = Offset(
-                        tychoCenter.x + cos(angle) * radius * 0.55f,
-                        tychoCenter.y - abs(sin(angle)) * radius * 0.55f
+                        tychoCenter.x + TYCHO_RAY_COS[i] * rayLen,
+                        tychoCenter.y - TYCHO_RAY_ABS_SIN[i] * rayLen
                     ),
                     strokeWidth = 1.4f,
                     cap = StrokeCap.Round
@@ -327,11 +352,8 @@ private fun DrawScope.drawLunarMaria(
             }
         }
 
-        // Tycho crater (bright 3D rim + inner floor)
         draw3DCrater(tychoCenter, radius * 0.085f, litHighlightColor, alpha)
-        // Copernicus crater
         draw3DCrater(copernicusCenter, radius * 0.095f, litHighlightColor, alpha)
-        // Plato dark-floored northern crater
         draw3DCrater(platoCenter, radius * 0.075f, litHighlightColor, alpha)
     }
 }
@@ -342,20 +364,17 @@ private fun DrawScope.draw3DCrater(
     highlightColor: Color,
     baseAlpha: Float
 ) {
-    // Crater shadow rim (offset top-left)
     drawCircle(
         color = Color(0xFF2B2623).copy(alpha = baseAlpha * 1.1f),
         radius = craterRadius,
         center = Offset(craterCenter.x - craterRadius * 0.15f, craterCenter.y - craterRadius * 0.15f)
     )
-    // Crater sunlit rim (offset bottom-right)
     drawCircle(
         color = highlightColor.copy(alpha = (baseAlpha * 1.8f).coerceAtMost(0.65f)),
         radius = craterRadius * 0.92f,
         center = Offset(craterCenter.x + craterRadius * 0.12f, craterCenter.y + craterRadius * 0.12f),
         style = Stroke(width = (craterRadius * 0.28f).coerceAtLeast(1f))
     )
-    // Central peak
     drawCircle(
         color = highlightColor.copy(alpha = (baseAlpha * 1.9f).coerceAtMost(0.75f)),
         radius = craterRadius * 0.25f,
@@ -374,13 +393,10 @@ private fun populateIlluminatedMoonPath(
     var p = phaseFraction % 1.0
     if (p < 0) p += 1.0
 
-    // Flip waxing/waning left-right for Southern Hemisphere
     val effectiveWaxing = if (isNorthernHemisphere) (p <= 0.5) else (p > 0.5)
     val limbSign = if (effectiveWaxing) 1f else -1f
-    // Terminator x-scale: cos(2 * pi * p) ranges from +1 (New) -> 0 (Quarter) -> -1 (Full) -> 0 (Last Q) -> +1
     val terminatorScale = cos(2.0 * PI * p).toFloat() * limbSign
 
-    // Sample from top pole (y = -radius) to bottom pole (y = +radius) using precomputed LUT
     for (i in 0..TERMINATOR_STEPS) {
         val y = center.y + UNIT_T[i] * radius
         val halfChord = radius * UNIT_HALF_CHORD[i]
@@ -392,7 +408,6 @@ private fun populateIlluminatedMoonPath(
         }
     }
 
-    // Return from bottom pole (y = +radius) to top pole (y = -radius) along the terminator curve
     for (i in TERMINATOR_STEPS downTo 0) {
         val y = center.y + UNIT_T[i] * radius
         val halfChord = radius * UNIT_HALF_CHORD[i]
