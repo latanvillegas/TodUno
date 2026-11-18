@@ -56,26 +56,12 @@ jobs:
             chmod +x ./gradlew
           fi
 
-      - name: Preparar Keystores de Debug y Release
+      - name: Preparar Keystore de Firma Release
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           SECRET_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           SECRET_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          # 1. Asegurar debug.keystore en la raíz del proyecto
-          if [ ! -f "${GITHUB_WORKSPACE}/debug.keystore" ]; then
-            keytool -genkeypair -v \
-              -keystore "${GITHUB_WORKSPACE}/debug.keystore" \
-              -storepass android \
-              -alias androiddebugkey \
-              -keypass android \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
-          fi
-
-          # 2. Asegurar my-upload-key.jks para firma Release
           if [ -n "$KEYSTORE_BASE64" ] && [ -n "$SECRET_STORE_PASSWORD" ] && [ -n "$SECRET_KEY_PASSWORD" ]; then
             echo "Usando Keystore configurado en GitHub Secrets..."
             echo "$KEYSTORE_BASE64" | base64 --decode > "${GITHUB_WORKSPACE}/my-upload-key.jks"
@@ -102,21 +88,24 @@ jobs:
       - name: Ejecutar pruebas unitarias (JVM)
         run: ./gradlew :app:testDebugUnitTest --tests "com.example.ExampleUnitTest" --no-configuration-cache
 
-      - name: Compilar APK Debug y Release firmadas
-        run: ./gradlew :app:assembleDebug :app:assembleRelease --no-configuration-cache --stacktrace
+      - name: Compilar únicamente APK Release firmada
+        run: ./gradlew :app:assembleRelease --no-configuration-cache --stacktrace
 
-      - name: Preparar archivos APK para distribución
+      - name: Preparar archivo APK Release para distribución
         run: |
+          if [ -d "app/build/outputs/apk/debug" ] || compgen -G "app/build/outputs/apk/**/*debug*.apk" > /dev/null; then
+            echo "Error: No debe generarse ningún APK debug." >&2
+            exit 1
+          fi
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk dist/TodUno-release.apk
-          cp app/build/outputs/apk/debug/app-debug.apk dist/TodUno-debug.apk
           ls -lh dist/
 
-      - name: Subir APKs como Artifact de GitHub Actions
+      - name: Subir APK Release como Artifact de GitHub Actions
         uses: actions/upload-artifact@v4
         with:
-          name: TodUno-APKs
-          path: dist/*.apk
+          name: TodUno-Release-APK
+          path: dist/TodUno-release.apk
           if-no-files-found: error
 
       - name: Determinar etiqueta de versión (Tag)
@@ -131,7 +120,7 @@ jobs:
           fi
           echo "tag=${TAG_NAME}" >> "$GITHUB_OUTPUT"
 
-      - name: Publicar Release en GitHub con APKs adjuntas
+      - name: Publicar Release en GitHub con APK Release adjunta
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
@@ -140,10 +129,9 @@ jobs:
           body: |
             ## 🌙 TodUno: Calendario, Luna, Reloj y Calculadora (${{ steps.version.outputs.tag }})
 
-            ### 📦 Descarga directa de APK
-            Descarga e instala cualquiera de los archivos adjuntos en tu dispositivo Android (Android 7.0 / API 24 o superior):
-            - **`TodUno-release.apk`**: Versión optimizada y firmada lista para instalar.
-            - **`TodUno-debug.apk`**: Versión de depuración.
+            ### 📦 Descarga directa de APK (Solo Release)
+            Descarga e instala el archivo firmado de producción en tu dispositivo Android (Android 7.0 / API 24 o superior):
+            - **`TodUno-release.apk`**: Versión oficial de producción optimizada y firmada lista para instalar.
 
             ### ✨ Características incluidas (4 en 1)
             - 📅 **Calendario Lunar Mensual**: Fases de la luna día por día, hitos mensuales y notas personales por fecha.
@@ -152,7 +140,6 @@ jobs:
             - 🧮 **Calculadora Científica y de Fechas**: Funciones trigonométricas, constantes astronómicas (`29.5306 días`), conversión entre días y meses sinódicos, y cálculo de intervalos entre fechas.
           files: |
             dist/TodUno-release.apk
-            dist/TodUno-debug.apk
           draft: false
           prerelease: false
         env:

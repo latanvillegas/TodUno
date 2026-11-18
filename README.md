@@ -45,9 +45,8 @@ Este proyecto incluye el flujo de trabajo automatizado en **`.github/workflows/a
 1. **Sincroniza o haz push del repositorio a GitHub** en la rama `main` (o `master`), o crea un tag como `v1.0.0`.
 2. **GitHub Actions** se ejecutará automáticamente y realizará los siguientes pasos:
    - Configura **JDK 21**, **Android SDK (API 36)** y **Gradle 9.3.1**.
-   - Ejecuta las pruebas unitarias (`./gradlew :app:testDebugUnitTest`).
-   - Genera las llaves de firma automáticamente (o utiliza tus propios secretos si los defines) y compila:
-     - `TodUno-release.apk` (APK firmada de producción)
-     - `TodUno-debug.apk` (APK de depuración)
-   - Sube las APKs como **Artifacts** de la ejecución.
-   - **Publica automáticamente un GitHub Release** con una etiqueta de versión (`v1.0.X` o el tag que hayas enviado) adjuntando las APKs listas para descargar e instalar en Android.
+   - Ejecuta las pruebas unitarias en JVM (`./gradlew :app:testDebugUnitTest`).
+   - Genera la llave de firma Release automáticamente (o utiliza tus propios secretos si los defines) y compila **únicamente**:
+     - `TodUno-release.apk` (APK firmada de producción; nunca se compila ni publica APK debug)
+   - Sube el APK Release como **Artifact** de la ejecución.
+   - **Publica automáticamente un GitHub Release** con una etiqueta de versión (`v1.0.X` o el tag que hayas enviado) adjuntando exclusivamente `TodUno-release.apk` listo para descargar e instalar en Android.

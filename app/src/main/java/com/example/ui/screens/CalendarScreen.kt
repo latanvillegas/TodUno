@@ -85,6 +85,7 @@ import com.example.R
 import com.example.domain.CalendarDayCell
 import com.example.domain.LunarAstronomer
 import com.example.domain.MajorPhaseMilestone
+import com.example.domain.MoonPhaseType
 import com.example.domain.SimpleDate
 import com.example.ui.CalendarNote
 import com.example.ui.SeleniaUiState
@@ -309,7 +310,7 @@ fun CalendarScreen(
                 }
             }
 
-            // 1.5 Phase Color Legend Strip for Calendar Moons
+            // 1.5 Phase Legend Strip with Colored Mini-Moons
             item(key = "phase_legend") {
                 Row(
                     modifier = Modifier
@@ -319,20 +320,28 @@ fun CalendarScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     CalendarPhaseLegendBadge(
-                        color = Color(0xFF4DD0E1),
-                        label = "Nueva (Zafiro)"
+                        phaseType = MoonPhaseType.NEW_MOON,
+                        color = MoonPhaseType.NEW_MOON.recommendedCalendarLitColor(),
+                        label = "Nueva",
+                        isNorthernHemisphere = uiState.isNorthernHemisphere
                     )
                     CalendarPhaseLegendBadge(
-                        color = Color(0xFFFFD54F),
-                        label = "Creciente (Oro)"
+                        phaseType = MoonPhaseType.FIRST_QUARTER,
+                        color = MoonPhaseType.FIRST_QUARTER.recommendedCalendarLitColor(),
+                        label = "Creciente",
+                        isNorthernHemisphere = uiState.isNorthernHemisphere
                     )
                     CalendarPhaseLegendBadge(
-                        color = Color(0xFFFFB300),
-                        label = "Llena (Ámbar 3D)"
+                        phaseType = MoonPhaseType.FULL_MOON,
+                        color = MoonPhaseType.FULL_MOON.recommendedCalendarLitColor(),
+                        label = "Llena",
+                        isNorthernHemisphere = uiState.isNorthernHemisphere
                     )
                     CalendarPhaseLegendBadge(
-                        color = Color(0xFF80DEEA),
-                        label = "Menguante (Plata-Cian)"
+                        phaseType = MoonPhaseType.LAST_QUARTER,
+                        color = MoonPhaseType.LAST_QUARTER.recommendedCalendarLitColor(),
+                        label = "Menguante",
+                        isNorthernHemisphere = uiState.isNorthernHemisphere
                     )
                 }
             }
@@ -759,22 +768,25 @@ fun CalendarScreen(
 
 @Composable
 private fun CalendarPhaseLegendBadge(
+    phaseType: MoonPhaseType,
     color: Color,
-    label: String
+    label: String,
+    isNorthernHemisphere: Boolean
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(color)
+        MoonPhaseBadgeIcon(
+            phaseType = phaseType,
+            size = 16.dp,
+            litColor = color,
+            southernHemisphere = !isNorthernHemisphere
         )
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }

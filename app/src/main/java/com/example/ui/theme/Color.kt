@@ -2,7 +2,8 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Nocturnal Celestial Almanac Palette
+// Nocturnal Celestial Almanac Palette (AMOLED Pure Black Canvas)
+val AmoledPureBlack = Color(0xFF000000)
 val MidnightCosmos = Color(0xFF0B1026)
 val DeepObservatory = Color(0xFF131B3A)
 val ElevatedAstrolabe = Color(0xFF1C2752)
