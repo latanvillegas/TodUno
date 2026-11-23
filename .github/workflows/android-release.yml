@@ -94,16 +94,21 @@ jobs:
       - name: Configure Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Require the existing production keystore
+      - name: Require stable v2 production keystore
         shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          EXPECTED_CERT: ${{ secrets.RELEASE_CERT_SHA256 }}
         run: |
           set -euo pipefail
-          if [[ -z "$KEYSTORE_BASE64" || -z "$STORE_PASSWORD" || -z "$KEY_PASSWORD" ]]; then
-            echo "::error::Missing release signing secrets. Refusing to generate a temporary key."
+          if [[ -z "$KEYSTORE_BASE64" || -z "$STORE_PASSWORD" || -z "$KEY_PASSWORD" || -z "$EXPECTED_CERT" ]]; then
+            echo "::error::Missing release signing secrets. Use tools/setup_signing_termux.sh to provision them."
+            exit 1
+          fi
+          if [[ ! "$EXPECTED_CERT" =~ ^[[:xdigit:]]{64}$ ]]; then
+            echo "::error::RELEASE_CERT_SHA256 must be a 64-digit hexadecimal fingerprint."
             exit 1
           fi
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/toduno-release.jks"
@@ -122,14 +127,16 @@ jobs:
 
       - name: Verify package identity, version, signing certificate, and alignment
         shell: bash
+        env:
+          EXPECTED_CERT: ${{ secrets.RELEASE_CERT_SHA256 }}
         run: |
           set -euo pipefail
           python3 scripts/verify_release.py \
             --apk app/build/outputs/apk/release/app-release.apk \
             --expected-package com.aistudio.selenialunar.kxmpzq \
             --expected-version "${GITHUB_REF_NAME#v}" \
-            --min-version-code 14 \
-            --expected-cert '477d7bf8d50a6f5177a387bdd30ddcb44e84080bd773db80c12a189a7b6081b9'
+            --min-version-code 20000 \
+            --expected-cert "$EXPECTED_CERT"
           aab=app/build/outputs/bundle/release/app-release.aab
           test -s "$aab"
           jarsigner -verify -verbose "$aab" > "$RUNNER_TEMP/aab-verification.txt"
