@@ -1,0 +1,1 @@
+Prepare stable Android release signing, versioning, verification, and store metadata.
