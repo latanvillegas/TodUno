@@ -13,6 +13,13 @@
 
 ---
 
-## 📦 Compilación Automatizada (Solo Release APK)
+## 📦 Verificación y distribución
 
-El flujo `.github/workflows/android-release.yml` está configurado para ejecutar **únicamente** la compilación de `TodUno-release.apk` (`:app:assembleRelease`), sin compilar variantes `debug`, sin ejecutar suites adicionales ni publicar lanzamientos o etiquetas automáticas. El archivo firmado `TodUno-release.apk` queda disponible directamente como *Artifact* de la ejecución en GitHub Actions.
+- **PR y actualizaciones a `main`:** pruebas unitarias Android y lint.
+- **Etiquetas `v*` válidas:** compilan `TodUno-release.apk` y `TodUno-release.aab`, verifican el certificado de producción y publican un GitHub Release.
+- **Firma fail-closed:** los secretos `KEYSTORE_BASE64`, `STORE_PASSWORD` y `KEY_PASSWORD` son obligatorios para publicar. No se generan claves temporales.
+- **Próxima versión propuesta:** `v1.0.14` (versionCode 14). No etiquetar ni publicar hasta recuperar la clave de `v1.0.13` y completar las pruebas de dispositivo.
+
+Consulta [el procedimiento de lanzamiento](docs/RELEASE_CHECKLIST.md), [la política de privacidad](docs/PRIVACY_POLICY.md) y [la ficha de tienda](docs/STORE_LISTING.md).
+
+> La distribución en tiendas de código abierto necesita una decisión explícita del titular sobre la licencia del proyecto. El repositorio todavía no declara una licencia de reutilización.

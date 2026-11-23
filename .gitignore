@@ -16,3 +16,12 @@
 local.properties
 .env
 debug.keystore
+
+# Signing credentials must never be committed.
+*.jks
+*.keystore
+*.p12
+*.pfx
+
+# Local distribution output
+/dist/

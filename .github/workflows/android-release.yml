@@ -1,96 +1,171 @@
-name: Compilar Release APK
+name: Android quality and signed release
 
 on:
   push:
-    branches:
-      - main
-      - master
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: android-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 jobs:
-  build-release-apk:
-    name: Compilar únicamente Release APK
+  quality:
+    name: Tests and Android lint
     runs-on: ubuntu-latest
-
+    timeout-minutes: 45
     steps:
-      - name: Checkout del repositorio
+      - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
-      - name: Configurar JDK 21
+      - name: Set up Java
         uses: actions/setup-java@v4
         with:
-          distribution: "temurin"
-          java-version: "21"
+          distribution: temurin
+          java-version: '21'
 
-      - name: Configurar Android SDK (API 36.1)
+      - name: Set up Android SDK
         uses: android-actions/setup-android@v4
 
-      - name: Aceptar licencias e instalar plataforma Android 36.1
+      - name: Install Android platforms and build tools
         run: |
-          yes | sdkmanager --licenses || true
+          set -euo pipefail
           sdkmanager --install "platform-tools" "platforms;android-36.1" "build-tools;36.0.0" || \
             sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Configurar Gradle 9.3.1
+      - name: Configure Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "9.3.1"
 
-      - name: Preparar archivo .env y permisos de Gradle Wrapper
+      - name: Run unit tests and lint without signing secrets
         run: |
-          if [ ! -f ".env" ] && [ -f ".env.example" ]; then
-            cp .env.example .env
-          fi
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
-          fi
+          set -euo pipefail
+          cp .env.example .env
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest :app:lintDebug --no-daemon --stacktrace
 
-      - name: Preparar Keystore de Firma Release
+  release:
+    name: Sign and publish verified APK + AAB
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify release tag belongs to main
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "::error::Release tag must point to a commit already present on main."
+            exit 1
+          }
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android platforms and build tools
+        run: |
+          set -euo pipefail
+          sdkmanager --install "platform-tools" "platforms;android-36.1" "build-tools;36.0.0" || \
+            sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Configure Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Require the existing production keystore
+        shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          SECRET_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          SECRET_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$SECRET_STORE_PASSWORD" ] && [ -n "$SECRET_KEY_PASSWORD" ]; then
-            echo "$KEYSTORE_BASE64" | base64 --decode > "${GITHUB_WORKSPACE}/my-upload-key.jks"
-            echo "KEYSTORE_PATH=${GITHUB_WORKSPACE}/my-upload-key.jks" >> "$GITHUB_ENV"
-            echo "STORE_PASSWORD=${SECRET_STORE_PASSWORD}" >> "$GITHUB_ENV"
-            echo "KEY_PASSWORD=${SECRET_KEY_PASSWORD}" >> "$GITHUB_ENV"
-          else
-            rm -f "${GITHUB_WORKSPACE}/my-upload-key.jks"
-            keytool -genkeypair -v \
-              -keystore "${GITHUB_WORKSPACE}/my-upload-key.jks" \
-              -storepass selenia123 \
-              -alias upload \
-              -keypass selenia123 \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -dname "CN=TodUno,OU=Mobile,O=TodUno,L=Madrid,S=Madrid,C=ES"
-            echo "KEYSTORE_PATH=${GITHUB_WORKSPACE}/my-upload-key.jks" >> "$GITHUB_ENV"
-            echo "STORE_PASSWORD=selenia123" >> "$GITHUB_ENV"
-            echo "KEY_PASSWORD=selenia123" >> "$GITHUB_ENV"
-          fi
-
-      - name: Compilar únicamente Release APK
-        run: ./gradlew :app:assembleRelease -x lintVitalRelease --no-configuration-cache --stacktrace
-
-      - name: Recoger únicamente TodUno-release.apk
-        run: |
-          if [ -d "app/build/outputs/apk/debug" ] || compgen -G "app/build/outputs/apk/**/*debug*.apk" > /dev/null; then
-            echo "Error: No debe compilarse ningún APK debug." >&2
+          set -euo pipefail
+          if [[ -z "$KEYSTORE_BASE64" || -z "$STORE_PASSWORD" || -z "$KEY_PASSWORD" ]]; then
+            echo "::error::Missing release signing secrets. Refusing to generate a temporary key."
             exit 1
           fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/toduno-release.jks"
+          chmod 600 "$RUNNER_TEMP/toduno-release.jks"
+          echo "KEYSTORE_PATH=$RUNNER_TEMP/toduno-release.jks" >> "$GITHUB_ENV"
+
+      - name: Compile signed APK and Android App Bundle
+        env:
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          chmod +x ./gradlew
+          ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace
+
+      - name: Verify package identity, version, signing certificate, and alignment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify_release.py \
+            --apk app/build/outputs/apk/release/app-release.apk \
+            --expected-package com.aistudio.selenialunar.kxmpzq \
+            --expected-version "${GITHUB_REF_NAME#v}" \
+            --min-version-code 14 \
+            --expected-cert '477d7bf8d50a6f5177a387bdd30ddcb44e84080bd773db80c12a189a7b6081b9'
+          aab=app/build/outputs/bundle/release/app-release.aab
+          test -s "$aab"
+          jarsigner -verify -verbose "$aab" > "$RUNNER_TEMP/aab-verification.txt"
+          grep -Fq 'jar verified.' "$RUNNER_TEMP/aab-verification.txt" || {
+            echo "::error::Android App Bundle signature verification failed."
+            exit 1
+          }
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk dist/TodUno-release.apk
-          ls -lh dist/TodUno-release.apk
+          cp "$aab" dist/TodUno-release.aab
+          cd dist
+          sha256sum TodUno-release.apk TodUno-release.aab > SHA256SUMS
+          cat SHA256SUMS >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Subir TodUno-release.apk como Artifact
+      - name: Upload verified artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: TodUno-release-apk
-          path: dist/TodUno-release.apk
+          name: TodUno-signed-release
+          path: |
+            dist/TodUno-release.apk
+            dist/TodUno-release.aab
+            dist/SHA256SUMS
           if-no-files-found: error
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "::error::Release already exists; refusing to overwrite its binaries."
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            dist/TodUno-release.apk \
+            dist/TodUno-release.aab \
+            dist/SHA256SUMS \
+            --title "TodUno $GITHUB_REF_NAME" \
+            --generate-notes \
+            --verify-tag
