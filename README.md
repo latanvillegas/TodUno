@@ -17,13 +17,13 @@
 
 - **PR y actualizaciones a `main`:** pruebas unitarias Android y lint.
 - **Etiquetas `v*` válidas:** compilan `TodUno-release.apk` y `TodUno-release.aab`, verifican el certificado de producción y publican un GitHub Release.
-- **Firma fail-closed:** los secretos `KEYSTORE_BASE64`, `STORE_PASSWORD` y `KEY_PASSWORD` son obligatorios para publicar. No se generan claves temporales.
-- **Nueva versión:** `v2.0.0` (versionCode 20000), con firma creada en Termux. **No es compatible como actualización directa de `v1.x`**: antes de desinstalar la versión anterior, exporta el respaldo JSON.
+- **Firma fail-closed:** los secretos `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD` y `RELEASE_CERT_SHA256` son obligatorios para publicar. No se generan claves temporales.
+- **Primera versión de la nueva línea:** `v0.0.1` (`versionName=0.0.1`, `versionCode=20001`). El código interno crece desde el candidato firmado `2.0.0` (`20000`) para permitir su actualización directa. Con el nuevo certificado **no es compatible como actualización de los APK antiguos `v1.x`**: antes de desinstalarlos, exporta el respaldo JSON.
 
 Consulta [el procedimiento de lanzamiento](docs/RELEASE_CHECKLIST.md), [la política de privacidad](docs/PRIVACY_POLICY.md) y [la ficha de tienda](docs/STORE_LISTING.md).
 
 > La distribución en tiendas de código abierto necesita una decisión explícita del titular sobre la licencia del proyecto. El repositorio todavía no declara una licencia de reutilización.
 
-## 🔐 Firma permanente para TodUno 2.0.0
+## 🔐 Firma permanente para TodUno 0.0.1
 
-Con el repositorio clonado desde Termux, ejecuta `bash tools/setup_signing_termux.sh`. El script crea una clave local y establece cuatro secretos de GitHub Actions sin publicar el archivo privado. Consulta el [procedimiento de lanzamiento y migración](docs/RELEASE_CHECKLIST.md). No crear la etiqueta `v2.0.0` hasta comprobar los secretos y probar la aplicación.
+Con el repositorio clonado desde Termux, ejecuta `bash tools/setup_signing_termux.sh`. El script crea una clave local y establece cuatro secretos de GitHub Actions sin publicar el archivo privado. Consulta el [procedimiento de lanzamiento y migración](docs/RELEASE_CHECKLIST.md). No crear la etiqueta `v0.0.1` hasta que el candidato firmado de esa versión haya pasado las comprobaciones.

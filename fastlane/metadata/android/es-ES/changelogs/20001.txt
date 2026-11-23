@@ -1,0 +1,1 @@
+Versión inicial 0.0.1: calendario lunar, observatorio astronómico, reloj mundial, cronómetro, temporizador y calculadora científica.

@@ -1,1 +1,0 @@
-Nueva versión 2.0.0 con identidad de firma independiente. Calendario lunar, observatorio, relojes y calculadora científica.
