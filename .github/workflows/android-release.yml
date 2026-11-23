@@ -72,7 +72,7 @@ jobs:
     permissions:
       contents: write
     env:
-      EXPECTED_VERSION: '2.0.0'
+      EXPECTED_VERSION: '0.0.1'
     steps:
       - name: Checkout full history
         uses: actions/checkout@v4
@@ -126,7 +126,7 @@ jobs:
       - name: Configure Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Require stable v2 production keystore
+      - name: Require persistent production signing keystore
         shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -167,7 +167,7 @@ jobs:
             --apk app/build/outputs/apk/release/app-release.apk \
             --expected-package com.aistudio.selenialunar.kxmpzq \
             --expected-version "$EXPECTED_VERSION" \
-            --min-version-code 20000 \
+            --min-version-code 20001 \
             --expected-cert "$EXPECTED_CERT"
           aab=app/build/outputs/bundle/release/app-release.aab
           test -s "$aab"
