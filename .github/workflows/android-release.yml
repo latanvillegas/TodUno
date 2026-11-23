@@ -210,4 +210,5 @@ jobs:
             dist/SHA256SUMS \
             --title "TodUno $GITHUB_REF_NAME" \
             --generate-notes \
+            --latest \
             --verify-tag
