@@ -26,7 +26,7 @@
 
 ## Validación del APK/AAB
 
-En cada PR y push a `main`, GitHub Actions ejecuta pruebas unitarias y Android Lint. La publicación se lanza únicamente al crear una etiqueta `v*` que apunta a un commit existente en `main`.
+En cada PR y push a `main`, GitHub Actions ejecuta pruebas unitarias y Android Lint. Antes de publicar una etiqueta, se puede generar un **APK/AAB firmado de prueba** desde `main` mediante una ejecución manual de GitHub Actions, sin crear un GitHub Release. La publicación definitiva se lanza únicamente al crear una etiqueta `v*` que apunta a un commit existente en `main`.
 
 En el proceso de publicación se exige:
 
@@ -39,6 +39,30 @@ En el proceso de publicación se exige:
 - No sobrescribir etiquetas o releases existentes.
 
 La firma del APK nuevo debe comprobarse también en un dispositivo Android real antes de solicitar la aprobación de tiendas.
+
+## Compilar y probar el candidato firmado desde Termux
+
+Con los cuatro secretos ya configurados, y tras verificar que `main` incorporó el pipeline de candidatos, ejecutar en Termux:
+
+```bash
+gh workflow run android-release.yml -R latanvillegas/TodUno --ref main
+gh run list -R latanvillegas/TodUno --workflow android-release.yml --limit 5
+```
+
+Identificar el `RUN_ID` del evento `workflow_dispatch` correspondiente. Esperar a que la ejecución finalice correctamente y descargar **solo el artefacto de candidato** (no es un release público):
+
+```bash
+mkdir -p "$HOME/toduno-v2-candidate"
+gh run download RUN_ID -R latanvillegas/TodUno --name TodUno-signed-candidate --dir "$HOME/toduno-v2-candidate"
+cd "$HOME/toduno-v2-candidate"
+sha256sum -c SHA256SUMS
+```
+
+Sustituir `RUN_ID` por el identificador real de la ejecución. El archivo `TodUno-release.apk` en ese directorio es el APK **firmado con la nueva clave permanente**. El workflow comprueba automáticamente `packageName`, `versionName`, `versionCode`, firma, huella SHA-256 y alineación. Si falla alguna comprobación, no distribuye los artefactos. El candidato no crea etiquetas ni GitHub Releases.
+
+Realizar una instalación limpia de v2.0.0 y verificar también la restauración JSON tras respaldar y desinstalar una versión v1.x. **No intentar instalar v2 como actualización directa sobre v1.x**, porque las firmas son distintas. Confirmar el funcionamiento de calendario, alarmas, widget, observatorio, reloj y calculadora. Mantener una copia segura de la clave JKS creada en Termux antes de publicar.
+
+Solo después de las pruebas en dispositivo crear la etiqueta `v2.0.0` sobre un commit verificado de `main`.
 
 ## Migración de usuarios de v1.x
 
