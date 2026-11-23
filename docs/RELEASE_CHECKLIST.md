@@ -1,62 +1,61 @@
-# Procedimiento de lanzamiento de TodUno
+# Publicación de TodUno 2.0.0 con firma nueva
 
-## 1. Recuperar y asegurar la clave de firma
+## Identidad del lanzamiento
 
-La versión pública `v1.0.13` (18-11-2026) está firmada con el certificado SHA-256:
+- **Versión nueva:** `2.0.0`
+- **Git tag:** `v2.0.0` (no reutilizar `v1.0.13`)
+- **versionCode:** `20000`
+- **applicationId:** `com.aistudio.selenialunar.kxmpzq` (sin cambios)
+- **Clave privada:** JKS generada en Termux, alias `upload`, RSA 4096.
+- **Verificación del firmante:** SHA-256 del certificado público almacenado en `RELEASE_CERT_SHA256`.
 
-```text
-477d7bf8d50a6f5177a387bdd30ddcb44e84080bd773db80c12a189a7b6081b9
-```
+**Advertencia de compatibilidad:** el nuevo certificado de firma es distinto al utilizado para `v1.x`. Android no permite actualizar normalmente una instalación anterior con un APK que lleva otro certificado, aunque el número de versión sea mayor. Como el `applicationId` se conserva, la versión nueva no puede instalarse junto a la anterior. Es obligatorio respaldar datos, desinstalar y reinstalar, salvo que exista una rotación de firma compatible expresamente configurada y verificada.
 
-El APK producido por el último workflow de la antigua rama `main` tenía otro certificado (`f927036d1cfad89e7dd56e09d93ee4c5bfe36acebdd2c9bf922569db75981c97`), por lo que **no constituye una actualización instalable sobre v1.0.13**.
+## Preparación con Termux
 
-1. Localizar la clave privada original que firmó `v1.0.13` antes de publicar otra versión.
-2. Verificar que el archivo JKS recuperado contiene el alias `upload` y que su certificado coincide exactamente con el SHA-256 anterior. El certificado es público; **no subir el JKS ni las contraseñas al repositorio**.
-3. Configurar los secretos de Actions: `KEYSTORE_BASE64`, `STORE_PASSWORD` y `KEY_PASSWORD`.
-4. Guardar copia cifrada y controlada de la clave y contraseñas en un gestor seguro, separada de GitHub. El CI fallará intencionadamente si falta alguno de los secretos.
-5. Si esa clave ya no existe, **no usar una clave nueva como si fuera una actualización**. Definir y comunicar un proceso de migración de firma o reinstalación con exportación de datos.
+1. Instalar herramientas: `pkg update && pkg install -y openjdk-21 gh coreutils git`.
+2. Autenticarse en GitHub desde Termux con `gh auth login --hostname github.com --git-protocol https --web` (el script también ofrecerá iniciar sesión).
+3. Clonar o actualizar este repositorio y ejecutar `bash tools/setup_signing_termux.sh`.
+4. El script crea `~/.config/toduno/signing/toduno-release.jks` si aún no existe, solicita la contraseña sin mostrarla, calcula la huella del certificado y carga **cuatro secretos de repositorio**:
+   - `KEYSTORE_BASE64`: archivo JKS codificado en base64.
+   - `STORE_PASSWORD`: contraseña del almacén.
+   - `KEY_PASSWORD`: contraseña de la clave (igual a la del almacén en este procedimiento).
+   - `RELEASE_CERT_SHA256`: huella SHA-256 pública del certificado.
+5. Comprobar los nombres con `gh secret list -R latanvillegas/TodUno` o en Settings → Secrets and variables → Actions. GitHub no revela el contenido.
+6. Guardar el JKS y su contraseña mediante un respaldo seguro fuera del dispositivo. **Nunca** subir JKS, base64 o contraseñas al repositorio, incidencias o chat. Si se pierde esa clave, las futuras actualizaciones volverán a sufrir incompatibilidad de firma.
 
-## 2. Actualizar la versión
+## Validación del APK/AAB
 
-La configuración del código propone `versionCode=14` y `versionName=1.0.14`, para la etiqueta `v1.0.14`.
+En cada PR y push a `main`, GitHub Actions ejecuta pruebas unitarias y Android Lint. La publicación se lanza únicamente al crear una etiqueta `v*` que apunta a un commit existente en `main`.
 
-- Las siguientes versiones requieren `versionCode` estrictamente creciente.
-- Cada etiqueta `vX.Y.Z` debe coincidir con `versionName=X.Y.Z` dentro del APK.
-- No cambiar `applicationId=com.aistudio.selenialunar.kxmpzq` si se desea mantener la vía de actualización.
+En el proceso de publicación se exige:
 
-## 3. Validaciones automáticas
+- Los cuatro secretos presentes, sin generación de claves temporales.
+- Compilación de `assembleRelease` y `bundleRelease`.
+- APK con el paquete esperado, versión `2.0.0` y `versionCode >= 20000`.
+- APK firmado y certificado coincidente con `RELEASE_CERT_SHA256`.
+- ZIP alineado para páginas de 16 KB, y AAB verificado con `jarsigner`.
+- Archivos `TodUno-release.apk`, `TodUno-release.aab` y `SHA256SUMS` en GitHub Releases.
+- No sobrescribir etiquetas o releases existentes.
 
-En cada PR y push a `main`, el workflow ejecuta `testDebugUnitTest` y `lintDebug`, sin acceso a secretos de firma.
+La firma del APK nuevo debe comprobarse también en un dispositivo Android real antes de solicitar la aprobación de tiendas.
 
-Solo una etiqueta `v*` que pertenezca a `main` ejecuta la creación de APK y AAB de publicación. Se verifican:
+## Migración de usuarios de v1.x
 
-- Existencia del JKS original y de las contraseñas.
-- Compilación `assembleRelease` y `bundleRelease`.
-- Identificador, `versionName`, `versionCode` y firma del APK mediante `aapt2` y `apksigner`.
-- Igualdad con el certificado público de `v1.0.13`.
-- Alineación ZIP de 16 KB (`zipalign -c -P 16`).
-- Firma de AAB mediante `jarsigner` y hashes SHA-256.
-- Creación de GitHub Release con `TodUno-release.apk`, `TodUno-release.aab` y `SHA256SUMS`. No se sobrescriben releases existentes.
+1. Abrir la versión antigua y **exportar JSON** de calendario, notas, preferencias e historial.
+2. Guardar el archivo JSON fuera del área privada de la aplicación, en un lugar accesible tras desinstalar.
+3. Comprobar que la exportación y una copia de seguridad adicional son legibles.
+4. Desinstalar la versión antigua e instalar la versión `2.0.0` con la firma nueva.
+5. Restaurar los datos desde el JSON y comprobar notas, recordatorios, reloj, widget e historial.
 
-Ejecutar primero el PR de infraestructura y comprobar los resultados. **No crear la etiqueta** hasta recuperar la clave y completar las pruebas de dispositivo.
+La migración **no es automática** y no está validada hasta comprobarla con el APK final.
 
-## 4. Validación física
+## Requisitos de tiendas aún pendientes
 
-- Instalar desde cero y actualizar desde `v1.0.13` con la **misma firma** sin perder datos.
-- Probar calendario, notas, copias JSON, observatorio, reloj, cronómetro y calculadora.
-- Probar notificaciones autorizadas, reinicio, cambio de zona horaria y widget.
-- Revisar Android 7, Android 13+ y Android 16, incluido un dispositivo con páginas de memoria de 16 KB cuando esté disponible.
-- Validar los permisos y la política de privacidad contra el binario final.
+- Confirmar los derechos y la licencia del código y de los recursos gráficos, especialmente antes de solicitar IzzyOnDroid o F-Droid.
+- Contacto público de soporte, identidad del editor y formularios de privacidad.
+- Revisar capturas y dimensiones del icono contra la versión final, y verificar permisos.
+- Crear una etiqueta nueva `v2.0.0` **solo cuando los secretos estén cargados y las pruebas hayan aprobado**.
+- Tras una publicación correcta en GitHub Releases, presentar la solicitud de Orion Store y revisar las condiciones de otras tiendas.
 
-## 5. Publicación y tiendas
-
-- Verificar el Release en GitHub antes de solicitar su inclusión en Orion Store u otros catálogos.
-- Usar enlace directo al APK publicado y enlaces directos a iconos y capturas PNG.
-- Obtener autorización sobre la licencia de código y recursos y publicar `LICENSE` si procede.
-- Completar email de soporte, identidad del editor, política pública, clasificación por edades y metadatos exigidos por cada tienda.
-- Para Google Play usar el `.aab`, configurar Play App Signing y revisar las declaraciones de datos.
-- No asumir que el catálogo aprobó la aplicación hasta recibir la confirmación del mantenedor.
-
-## 6. Regla de continuidad
-
-Nunca utilizar un JKS nuevo generado dentro de un runner. No publicar APKs si la verificación de firma o las pruebas fallan. Conservar los registros del SHA de Git, SHA-256 de binario, certificado y ejecución de Actions de cada entrega.
+No usar el certificado de `v1.0.13` como valor esperado para la nueva clave. No afirmar que v2 puede actualizar v1 sin reinstalación.

@@ -18,8 +18,12 @@
 - **PR y actualizaciones a `main`:** pruebas unitarias Android y lint.
 - **Etiquetas `v*` válidas:** compilan `TodUno-release.apk` y `TodUno-release.aab`, verifican el certificado de producción y publican un GitHub Release.
 - **Firma fail-closed:** los secretos `KEYSTORE_BASE64`, `STORE_PASSWORD` y `KEY_PASSWORD` son obligatorios para publicar. No se generan claves temporales.
-- **Próxima versión propuesta:** `v1.0.14` (versionCode 14). No etiquetar ni publicar hasta recuperar la clave de `v1.0.13` y completar las pruebas de dispositivo.
+- **Nueva versión:** `v2.0.0` (versionCode 20000), con firma creada en Termux. **No es compatible como actualización directa de `v1.x`**: antes de desinstalar la versión anterior, exporta el respaldo JSON.
 
 Consulta [el procedimiento de lanzamiento](docs/RELEASE_CHECKLIST.md), [la política de privacidad](docs/PRIVACY_POLICY.md) y [la ficha de tienda](docs/STORE_LISTING.md).
 
 > La distribución en tiendas de código abierto necesita una decisión explícita del titular sobre la licencia del proyecto. El repositorio todavía no declara una licencia de reutilización.
+
+## 🔐 Firma permanente para TodUno 2.0.0
+
+Con el repositorio clonado desde Termux, ejecuta `bash tools/setup_signing_termux.sh`. El script crea una clave local y establece cuatro secretos de GitHub Actions sin publicar el archivo privado. Consulta el [procedimiento de lanzamiento y migración](docs/RELEASE_CHECKLIST.md). No crear la etiqueta `v2.0.0` hasta comprobar los secretos y probar la aplicación.
