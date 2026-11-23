@@ -49,6 +49,7 @@ jobs:
           set -euo pipefail
           cp .env.example .env
           chmod +x ./gradlew
+          python3 -m py_compile scripts/verify_release.py
           ./gradlew :app:testDebugUnitTest :app:lintDebug --no-daemon --stacktrace
 
   release:

@@ -364,8 +364,19 @@ object SeleniaAlertManager {
             .setContentIntent(contentPi)
             .build()
 
-        runCatching {
+        // Android 13+ permission may be revoked between composing the notification and posting it.
+        // Keep the permission check local to the call so Android Lint can verify the guarded path.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                appCtx,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) return
+
+        try {
             NotificationManagerCompat.from(appCtx).notify(notificationId, notification)
+        } catch (_: SecurityException) {
+            // Permission can change concurrently; skip the notification without crashing.
         }
     }
 }
