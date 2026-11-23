@@ -1,0 +1,15 @@
+TodUno brings four essential tools into one Android application.
+
+LUNAR CALENDAR
+Explore the Moon phases for every day of the month, upcoming lunar events, personal notes and reminders.
+
+MOON OBSERVATORY
+Explore the illuminated Moon, lunar age, distance, orbital data, phase predictions and eclipses. Select the Northern or Southern Hemisphere.
+
+WORLD CLOCK AND TIME TOOLS
+Customize world clocks and time zones, view astronomical time, and use the stopwatch and countdown timer.
+
+SCIENTIFIC CALCULATOR
+Calculate trigonometric functions, logarithms, powers, roots and expressions. Keep a local calculation history.
+
+Core functions work offline and do not require an account. Notes, preferences and calculation history remain on the device, subject to Android system backup settings.

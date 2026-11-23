@@ -1,0 +1,15 @@
+TodUno reúne cuatro herramientas en una sola aplicación Android.
+
+CALENDARIO LUNAR
+Consulta las fases lunares del mes, próximos hitos, notas personales y recordatorios.
+
+OBSERVATORIO LUNAR
+Explora la iluminación, edad lunar, distancia, datos orbitales, fases próximas y eclipses. Puedes seleccionar el hemisferio norte o sur.
+
+RELOJ MUNDIAL Y HERRAMIENTAS DE TIEMPO
+Personaliza husos horarios y ciudades, consulta datos de tiempo astronómico y usa el cronómetro y el temporizador.
+
+CALCULADORA CIENTÍFICA
+Realiza operaciones trigonométricas, logaritmos, potencias, raíces y expresiones, con historial local.
+
+Las funciones principales se ejecutan sin conexión y no requieren cuenta. Tus notas y preferencias se guardan en el dispositivo, sujeto a la configuración de copias de seguridad de Android.
