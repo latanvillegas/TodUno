@@ -1,1 +1,0 @@
-Preparación de firma estable, versionado, verificaciones y metadatos de publicación.
