@@ -4,9 +4,13 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    # Keep version-update PRs disabled to maintain a single-branch repository.
+    # Security alerts and dependency review remain available.
+    open-pull-requests-limit: 0
   - package-ecosystem: gradle
     directory: "/"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    # Keep version-update PRs disabled to maintain a single-branch repository.
+    # Security alerts and dependency review remain available.
+    open-pull-requests-limit: 0
