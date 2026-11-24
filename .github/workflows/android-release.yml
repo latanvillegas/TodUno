@@ -201,7 +201,22 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Check whether GitHub Dependency graph is available
+        id: graph
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/$GITHUB_REPOSITORY/dependency-graph/sbom" --silent >/dev/null 2>&1; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Dependency review unavailable. Enable Dependency graph in repository Settings > Security & analysis."
+          fi
+
       - name: Fail on newly introduced high-severity vulnerable dependencies
+        if: steps.graph.outputs.enabled == 'true'
         uses: actions/dependency-review-action@05fe4576374b728f0c523d6a13d64c25081e0803 # v4.8.3
         with:
           fail-on-severity: high
