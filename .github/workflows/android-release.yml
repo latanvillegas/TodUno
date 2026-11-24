@@ -58,7 +58,6 @@ jobs:
           cp .env.example .env
           chmod +x ./gradlew
           python3 -m py_compile scripts/verify_release.py
-          bash -n tools/setup_signing_termux.sh
           ./gradlew :app:testDebugUnitTest :app:lintDebug --no-daemon --stacktrace
 
   release:
