@@ -358,117 +358,102 @@ class SeleniaRepository(
      * calculation history from an offline JSON backup produced by [exportBackupJson].
      */
     suspend fun importBackupJson(jsonText: String): BackupImportSummary = withContext(Dispatchers.IO) {
-        val root = JSONObject(jsonText.trim())
+        // Fully validate structure, calendar dates, field lengths and array sizes before any write.
+        val root = BackupImportValidator.validate(jsonText)
         val currentSettings = getPersistedSettingsSnapshot()
+        val settingsObj = root.getJSONObject("settings")
         var mergedWorldCities = currentSettings.selectedWorldCityIds
 
-        val settingsObj = root.optJSONObject("settings")
-        if (settingsObj != null) {
-            val isNorthern = settingsObj.optBoolean("isNorthernHemisphere", currentSettings.isNorthernHemisphere)
-            val is24h = settingsObj.optBoolean("is24HourFormat", currentSettings.is24HourFormat)
-            val isRad = settingsObj.optBoolean("isRadiansMode", currentSettings.isRadiansMode)
-            val lunarAlerts = settingsObj.optBoolean("lunarAlertsEnabled", currentSettings.lunarAlertsEnabled)
-            val preset = settingsObj.optString("watchDialPresetName", currentSettings.watchDialPresetName)
-                .ifBlank { currentSettings.watchDialPresetName }
-            val timerSec = settingsObj.optInt("timerTotalSeconds", currentSettings.timerTotalSeconds)
-                .coerceIn(MIN_TIMER_SECONDS, MAX_TIMER_SECONDS)
+        val isNorthern = settingsObj.optBoolean("isNorthernHemisphere", currentSettings.isNorthernHemisphere)
+        val is24h = settingsObj.optBoolean("is24HourFormat", currentSettings.is24HourFormat)
+        val isRad = settingsObj.optBoolean("isRadiansMode", currentSettings.isRadiansMode)
+        val lunarAlerts = settingsObj.optBoolean("lunarAlertsEnabled", currentSettings.lunarAlertsEnabled)
+        val preset = settingsObj.optString("watchDialPresetName", currentSettings.watchDialPresetName)
+        val timerSec = settingsObj.optInt("timerTotalSeconds", currentSettings.timerTotalSeconds)
+            .coerceIn(MIN_TIMER_SECONDS, MAX_TIMER_SECONDS)
 
-            val citiesArr = settingsObj.optJSONArray("worldCityIds")
-            if (citiesArr != null) {
-                val importedCities = buildList {
-                    for (i in 0 until citiesArr.length()) {
-                        val id = citiesArr.optString(i, "").trim()
-                        if (id.isNotBlank()) add(id)
-                    }
-                }
-                mergedWorldCities = (currentSettings.selectedWorldCityIds + importedCities).distinct()
-            }
-
-            syncWidgetHemispherePref(appContext, isNorthern)
-            appContext.seleniaDataStore.edit { prefs ->
-                prefs[Keys.IS_NORTHERN_HEMISPHERE] = isNorthern
-                prefs[Keys.IS_24_HOUR_FORMAT] = is24h
-                prefs[Keys.IS_RADIANS_MODE] = isRad
-                prefs[Keys.LUNAR_ALERTS_ENABLED] = lunarAlerts
-                prefs[Keys.WATCH_DIAL_PRESET] = preset
-                prefs[Keys.SELECTED_WORLD_CITIES] = mergedWorldCities.joinToString("|")
-                if (!(prefs[Keys.TIMER_RUNNING] ?: false)) {
-                    prefs[Keys.TIMER_TOTAL_SECONDS] = timerSec
-                    prefs[Keys.TIMER_REMAINING_PAUSED_MS] = timerSec * 1000L
-                }
-            }
+        settingsObj.optJSONArray("worldCityIds")?.let { array ->
+            val importedCities = (0 until array.length()).map { array.getString(it).trim() }
+            mergedWorldCities = (currentSettings.selectedWorldCityIds + importedCities).distinct()
+        }
+        require(mergedWorldCities.size <= BackupImportValidator.MAX_CITIES) {
+            "Demasiadas ciudades tras combinar los datos"
         }
 
         val existingNoteSignatures = dao.getAllNotesSnapshot()
             .mapTo(HashSet()) { "${it.dateKey}|${it.title.lowercase()}|${it.category.lowercase()}" }
-
-        var notesAdded = 0
-        val notesArr = root.optJSONArray("notes")
-        if (notesArr != null) {
-            for (i in 0 until notesArr.length()) {
-                val obj = notesArr.optJSONObject(i) ?: continue
-                val year = obj.optInt("year", 0)
-                val month = obj.optInt("month", 0)
-                val day = obj.optInt("day", 0)
-                val title = obj.optString("title", "").trim().take(240)
-                if (year !in 1900..2150 || month !in 1..12 || day !in 1..31 || title.isEmpty()) continue
-                val category = obj.optString("category", "Personal").trim().ifBlank { "Personal" }.take(48)
-                val date = SimpleDate(year, month, day)
-                val sig = "${date.storageKey}|${title.lowercase()}|${category.lowercase()}"
-                if (existingNoteSignatures.add(sig)) {
-                    dao.insertNote(
-                        CalendarNoteEntity(
-                            dateKey = date.storageKey,
-                            year = year,
-                            month = month,
-                            day = day,
-                            title = title,
-                            category = category,
-                            reminderEnabled = obj.optBoolean("reminderEnabled", false),
-                            reminderHour = obj.optInt("reminderHour", 9).coerceIn(0, 23),
-                            reminderMinute = obj.optInt("reminderMinute", 0).coerceIn(0, 59),
-                            createdAt = obj.optLong("createdAt", System.currentTimeMillis())
-                        )
+        val notesToInsert = ArrayList<CalendarNoteEntity>()
+        val notesArr = root.getJSONArray("notes")
+        for (i in 0 until notesArr.length()) {
+            val obj = notesArr.getJSONObject(i)
+            val year = obj.getInt("year")
+            val month = obj.getInt("month")
+            val day = obj.getInt("day")
+            val title = obj.getString("title").trim()
+            val category = obj.getString("category").trim()
+            val date = SimpleDate(year, month, day)
+            val signature = "${date.storageKey}|${title.lowercase()}|${category.lowercase()}"
+            if (existingNoteSignatures.add(signature)) {
+                notesToInsert.add(
+                    CalendarNoteEntity(
+                        dateKey = date.storageKey,
+                        year = year,
+                        month = month,
+                        day = day,
+                        title = title,
+                        category = category,
+                        reminderEnabled = obj.optBoolean("reminderEnabled", false),
+                        reminderHour = obj.optInt("reminderHour", 9),
+                        reminderMinute = obj.optInt("reminderMinute", 0),
+                        createdAt = obj.optLong("createdAt", System.currentTimeMillis())
                     )
-                    notesAdded++
-                }
+                )
             }
         }
 
         val existingHistorySignatures = dao.getAllHistorySnapshot()
             .mapTo(HashSet()) { "${it.expression}|${it.result}" }
-
-        var historyAdded = 0
-        val histArr = root.optJSONArray("calculationHistory")
-        if (histArr != null) {
-            // Insert oldest-first so newest stays at top if timestamps aren't provided
-            for (i in (histArr.length() - 1) downTo 0) {
-                val obj = histArr.optJSONObject(i) ?: continue
-                val expr = obj.optString("expression", "").trim().take(256)
-                val res = obj.optString("result", "").trim().take(64)
-                if (expr.isEmpty() || res.isEmpty()) continue
-                val sig = "$expr|$res"
-                if (existingHistorySignatures.add(sig)) {
-                    val badge = obj.optString("badgeLabel", "").trim().takeIf { it.isNotEmpty() }?.take(64)
-                    dao.insertHistoryRecord(
-                        CalculationHistoryEntity(
-                            expression = expr,
-                            result = res,
-                            badgeLabel = badge,
-                            createdAt = obj.optLong("createdAt", System.currentTimeMillis())
-                        )
+        val historyToInsert = ArrayList<CalculationHistoryEntity>()
+        val historyArr = root.getJSONArray("calculationHistory")
+        // Preserve the established oldest-first import semantics.
+        for (i in (historyArr.length() - 1) downTo 0) {
+            val obj = historyArr.getJSONObject(i)
+            val expr = obj.getString("expression").trim()
+            val result = obj.getString("result").trim()
+            if (existingHistorySignatures.add("$"+"expr|$"+"result")) {
+                historyToInsert.add(
+                    CalculationHistoryEntity(
+                        expression = expr,
+                        result = result,
+                        badgeLabel = obj.optString("badgeLabel", "")
+                            .trim().takeIf { it.isNotEmpty() },
+                        createdAt = obj.optLong("createdAt", System.currentTimeMillis())
                     )
-                    historyAdded++
-                }
-            }
-            if (historyAdded > 0) {
-                dao.pruneOldHistoryRecords(keepLimit = 50)
+                )
             }
         }
 
+        // SQLite changes are atomic: a failed insertion cannot leave partial notes or history.
+        dao.insertBackupRecords(notesToInsert, historyToInsert)
+        // DataStore and Room do not support a single cross-store transaction. Their individual
+        // writes are atomic, and this step runs only after full validation and a successful DB commit.
+        appContext.seleniaDataStore.edit { prefs ->
+            prefs[Keys.IS_NORTHERN_HEMISPHERE] = isNorthern
+            prefs[Keys.IS_24_HOUR_FORMAT] = is24h
+            prefs[Keys.IS_RADIANS_MODE] = isRad
+            prefs[Keys.LUNAR_ALERTS_ENABLED] = lunarAlerts
+            prefs[Keys.WATCH_DIAL_PRESET] = preset
+            prefs[Keys.SELECTED_WORLD_CITIES] = mergedWorldCities.joinToString("|")
+            if (!(prefs[Keys.TIMER_RUNNING] ?: false)) {
+                prefs[Keys.TIMER_TOTAL_SECONDS] = timerSec
+                prefs[Keys.TIMER_REMAINING_PAUSED_MS] = timerSec * 1000L
+            }
+        }
+        syncWidgetHemispherePref(appContext, isNorthern)
+
         BackupImportSummary(
-            notesImported = notesAdded,
-            calculationsImported = historyAdded,
+            notesImported = notesToInsert.size,
+            calculationsImported = historyToInsert.size,
             worldCitiesCount = mergedWorldCities.size
         )
     }

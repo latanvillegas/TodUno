@@ -121,6 +121,17 @@ interface SeleniaDao {
 
     @Query("DELETE FROM calculation_history")
     suspend fun clearCalculationHistory()
+
+    // All imported SQLite rows succeed or roll back together.
+    @Transaction
+    suspend fun insertBackupRecords(
+        notes: List<CalendarNoteEntity>,
+        history: List<CalculationHistoryEntity>
+    ) {
+        notes.forEach { insertNote(it) }
+        history.forEach { insertHistoryRecord(it) }
+        if (history.isNotEmpty()) pruneOldHistoryRecords(keepLimit = 50)
+    }
 }
 
 @Database(
@@ -153,7 +164,6 @@ abstract class SeleniaDatabase : RoomDatabase() {
                     "selenia_lunar_calc.db"
                 )
                     .addMigrations(MIGRATION_3_4)
-                    .fallbackToDestructiveMigration(true)
                     .build()
                     .also { INSTANCE = it }
             }
