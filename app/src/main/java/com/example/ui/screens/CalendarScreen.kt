@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import android.Manifest
 import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -82,6 +83,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.data.BackupImportValidator
 import com.example.domain.CalendarDayCell
 import com.example.domain.LunarAstronomer
 import com.example.domain.MajorPhaseMilestone
@@ -97,6 +99,7 @@ import com.example.ui.components.SeleniaVectorIcons
 import com.example.ui.components.recommendedCalendarLitColor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 private val NOTE_CATEGORIES = listOf("Personal", "Astronomía", "Siembra", "Cálculo")
@@ -170,13 +173,20 @@ fun CalendarScreen(
     ) { uri ->
         if (uri != null) {
             ioScope.launch(Dispatchers.IO) {
-                val readText = runCatching {
-                    context.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use {
-                        it.readText()
+                val result = runCatching {
+                    val stream = context.contentResolver.openInputStream(uri)
+                        ?: throw IllegalArgumentException("No se puede abrir el respaldo")
+                    BackupImportValidator.readBounded(stream)
+                }
+                result.onSuccess { onImportBackupJson(it) }
+                result.onFailure {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            context,
+                            "No se pudo leer el JSON. Comprueba el archivo y el límite de 8 MiB.",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
-                }.getOrNull()
-                if (!readText.isNullOrBlank()) {
-                    onImportBackupJson(readText)
                 }
             }
         }

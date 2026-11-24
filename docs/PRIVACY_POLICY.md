@@ -1,6 +1,6 @@
 # Política de privacidad de TodUno
 
-**Última actualización:** 23 de noviembre de 2026
+**Última actualización:** 24 de noviembre de 2026
 
 TodUno es una aplicación Android para consultar un calendario lunar, observar fenómenos astronómicos, utilizar relojes, temporizadores y una calculadora científica. Esta política describe el comportamiento de la aplicación según el código Android publicado en este repositorio.
 
@@ -24,7 +24,7 @@ La aplicación no solicita permisos de ubicación ni de acceso general al almace
 
 ## Copias de seguridad del sistema
 
-El manifiesto permite las copias de seguridad de Android (`android:allowBackup="true"`) e incluye reglas de extracción para la base de datos y las preferencias. Según la configuración del dispositivo, Android puede transferir estos datos a una copia de seguridad en la nube administrada por el proveedor del sistema o a otro dispositivo. Esto no equivale a una transferencia realizada directamente a servidores de TodUno. El usuario puede gestionar las opciones de respaldo en los ajustes de Android.
+El manifiesto conserva `android:allowBackup="true"` para permitir transferencias compatibles entre dispositivos. La configuración excluye el directorio privado de la aplicación de **las copias automáticas en la nube**. En Android 12 o superior, las reglas separadas permiten la transferencia entre dispositivos de la base de datos y preferencias; en Android 11 o anterior, las reglas de copia automática excluyen los datos de la aplicación. Las funciones de exportación y restauración JSON siguen disponibles para realizar respaldos manuales. Los proveedores y mecanismos de transferencia del sistema operativo aplican sus propios controles y políticas.
 
 ## Conservación y control
 

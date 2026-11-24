@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
+    <!-- Android 12+: prohibit cloud backup of private files, DB and preferences. -->
     <cloud-backup>
-        <include domain="database" path="selenia_lunar_calc.db" />
-        <include domain="file" path="datastore/" />
-        <include domain="sharedpref" path="selenia_widget_sync_prefs.xml" />
+        <exclude domain="root" path="." />
     </cloud-backup>
+    <!-- Android 12+: keep user-initiated device-to-device migration possible. -->
     <device-transfer>
         <include domain="database" path="selenia_lunar_calc.db" />
         <include domain="file" path="datastore/" />

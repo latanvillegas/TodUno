@@ -420,7 +420,7 @@ class SeleniaRepository(
             val obj = historyArr.getJSONObject(i)
             val expr = obj.getString("expression").trim()
             val result = obj.getString("result").trim()
-            if (existingHistorySignatures.add("$"+"expr|$"+"result")) {
+            if (existingHistorySignatures.add("${expr}|${result}")) {
                 historyToInsert.add(
                     CalculationHistoryEntity(
                         expression = expr,
