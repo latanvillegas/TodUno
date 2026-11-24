@@ -10,6 +10,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.example.data.BackupImportValidator
 import com.example.data.CalculationHistoryEntity
 import com.example.data.SeleniaDatabase
 import com.example.ui.SeleniaViewModel
@@ -30,6 +31,94 @@ class ExampleRobolectricTest {
 
     @get:Rule
     val composeTestRule = createComposeRule()
+
+    @Test
+    fun `bounded backup reader rejects oversized or malformed UTF8 input`() {
+        val oversized = java.io.ByteArrayInputStream(
+            ByteArray(BackupImportValidator.MAX_BACKUP_BYTES + 1) { 65 }
+        )
+        val result = runCatching { BackupImportValidator.readBounded(oversized) }
+        org.junit.Assert.assertTrue(result.isFailure)
+
+        val malformed = java.io.ByteArrayInputStream(byteArrayOf(0xC3.toByte(), 0x28))
+        org.junit.Assert.assertTrue(
+            runCatching { BackupImportValidator.readBounded(malformed) }.isFailure
+        )
+    }
+
+    @Test
+    fun `backup validation rejects invalid dates and malformed or oversized arrays`() {
+        val root = org.json.JSONObject()
+            .put("app", "TodUno")
+            .put("backupFormatVersion", 1)
+            .put("settings", org.json.JSONObject().put("worldCityIds", org.json.JSONArray()))
+            .put("notes", org.json.JSONArray())
+            .put("calculationHistory", org.json.JSONArray())
+
+        org.junit.Assert.assertEquals("TodUno", BackupImportValidator.validate(root.toString()).getString("app"))
+        val invalidDate = org.json.JSONObject()
+            .put("year", 2026)
+            .put("month", 2)
+            .put("day", 30)
+            .put("title", "Nota inválida")
+            .put("category", "Personal")
+        root.put("notes", org.json.JSONArray().put(invalidDate))
+        org.junit.Assert.assertTrue(
+            runCatching { BackupImportValidator.validate(root.toString()) }.isFailure
+        )
+
+        root.put("notes", org.json.JSONArray())
+        root.put("calculationHistory", org.json.JSONArray().put(
+            org.json.JSONObject().put("expression", "").put("result", "1")
+        ))
+        org.junit.Assert.assertTrue(
+            runCatching { BackupImportValidator.validate(root.toString()) }.isFailure
+        )
+
+        root.put("calculationHistory", org.json.JSONArray())
+        root.put("app", "OtraApp")
+        org.junit.Assert.assertTrue(
+            runCatching { BackupImportValidator.validate(root.toString()) }.isFailure
+        )
+    }
+
+    @Test
+    fun `malformed backup never changes existing Room data`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, SeleniaDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val dao = db.seleniaDao()
+            dao.insertNote(
+                com.example.data.CalendarNoteEntity(
+                    dateKey = "2026-11-23", year = 2026, month = 11, day = 23,
+                    title = "Conservar nota", category = "Personal"
+                )
+            )
+            val repo = com.example.data.SeleniaRepository(context, dao)
+            val malformed = org.json.JSONObject()
+                .put("app", "TodUno")
+                .put("backupFormatVersion", 1)
+                .put("settings", org.json.JSONObject())
+                .put("notes", org.json.JSONArray().put(
+                    org.json.JSONObject()
+                        .put("year", 2026).put("month", 12).put("day", 12)
+                        .put("title", "No importar").put("category", "Personal")
+                ))
+                .put("calculationHistory", org.json.JSONArray().put(
+                    org.json.JSONObject().put("expression", "").put("result", "1")
+                ))
+            org.junit.Assert.assertTrue(
+                runCatching { repo.importBackupJson(malformed.toString()) }.isFailure
+            )
+            val existing = dao.getAllNotesSnapshot()
+            assertEquals(1, existing.size)
+            assertEquals("Conservar nota", existing.single().title)
+        } finally {
+            db.close()
+        }
+    }
 
     @Test
     fun `read string from context`() {

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and older: do not automatically send private app data to cloud backups. -->
+<!-- Users can still export a portable JSON backup explicitly from the app. -->
 <full-backup-content>
-    <include domain="database" path="selenia_lunar_calc.db" />
-    <include domain="file" path="datastore/" />
-    <include domain="sharedpref" path="selenia_widget_sync_prefs.xml" />
+    <exclude domain="root" path="." />
 </full-backup-content>
