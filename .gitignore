@@ -25,3 +25,15 @@ debug.keystore
 
 # Local distribution output
 /dist/
+
+# Environment overrides: keep only the documented, credential-free template.
+.env.*
+!.env.example
+
+# Additional private-key formats and encrypted local key backups.
+*.pem
+*.key
+*.jks.enc
+*.keystore.enc
+*.p12.enc
+*.pfx.enc
