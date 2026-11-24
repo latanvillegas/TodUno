@@ -35,71 +35,60 @@
 
 ---
 
-## Una aplicación. Cuatro herramientas.
+## Cuatro herramientas. Una experiencia renovada.
 
 <table>
   <tr>
     <td width="50%" valign="top">
       <h3>🌙 Calendario lunar</h3>
-      <p>Consulta las fases y los eventos del calendario, explora fechas y organiza notas personales con recordatorios.</p>
+      <p><strong>El mes y tus eventos, en perspectiva.</strong></p>
+      <p>Calendario de seis semanas con pequeñas lunas ilustradas, leyenda de fases e hitos lunares del mes. Gestiona notas por fecha, busca en tu agenda y programa recordatorios con hora personalizada.</p>
     </td>
     <td width="50%" valign="top">
-      <h3>🔭 Observatorio</h3>
-      <p>Explora la iluminación, el ciclo lunar y los próximos eventos astronómicos, con visualización adaptada al hemisferio.</p>
+      <h3>🔭 Observatorio lunar</h3>
+      <p><strong>Una vista detallada del cielo lunar.</strong></p>
+      <p>Luna tridimensional con iluminación y orientación según hemisferio, ciclo interactivo de ocho fases, datos astronómicos y próximos eclipses y superlunas calculados.</p>
     </td>
   </tr>
   <tr>
     <td valign="top">
-      <h3>⏱️ Relojes y tiempo</h3>
-      <p>Revisa horas de distintas ciudades y utiliza cronómetro y temporizador desde una misma aplicación.</p>
+      <h3>⌚ Reloj astronómico</h3>
+      <p><strong>El tiempo, con más personalidad.</strong></p>
+      <p>Esfera analógica con fase lunar y cinco diseños de carátula, lectura digital y reloj mundial con ciudades seleccionadas por ti. Incluye cronómetro con vueltas y temporizador configurable.</p>
     </td>
     <td valign="top">
       <h3>🧮 Calculadora científica</h3>
-      <p>Resuelve operaciones avanzadas, utiliza funciones científicas y consulta tu historial de cálculos.</p>
+      <p><strong>Herramientas precisas para cada cálculo.</strong></p>
+      <p>Funciones trigonométricas y sus inversas, potencias, raíces, logaritmos, modos DEG/RAD, reutilización de resultados y un historial local consultable.</p>
     </td>
   </tr>
 </table>
 
-## Conoce la experiencia
-
-<p align="center">
-  <sub>Capturas reales de TodUno · Interfaz azul noche con detalles dorados y cian</sub>
-</p>
+## Descubre las mejoras
 
 <table>
   <tr>
-    <td width="50%" align="center" valign="top">
-      <a href="fastlane/metadata/android/en-US/images/phoneScreenshots/01.png">
-        <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/01.png" alt="Vista del calendario lunar: fases, iluminación y detalles del día" width="100%" />
-      </a>
-      <br />
-      <strong>Calendario lunar</strong>
+    <td width="33%" align="center" valign="top">
+      <strong>🌗 Fases en detalle</strong><br />
+      <sub>Calendario visual, ocho fases lunares, próximos eventos y seguimiento del cielo.</sub>
     </td>
-    <td width="50%" align="center" valign="top">
-      <a href="fastlane/metadata/android/en-US/images/phoneScreenshots/03.png">
-        <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/03.png" alt="Vista del reloj mundial con ciudades y sus horas" width="100%" />
-      </a>
-      <br />
-      <strong>Reloj mundial</strong>
+    <td width="33%" align="center" valign="top">
+      <strong>🕰️ Tiempo a tu estilo</strong><br />
+      <sub>Carátulas de reloj personalizables, ciudades a elección y herramientas de medición del tiempo.</sub>
+    </td>
+    <td width="33%" align="center" valign="top">
+      <strong>🗂️ Agenda y respaldo</strong><br />
+      <sub>Notas, recordatorios, búsqueda y exportación o restauración local en JSON.</sub>
     </td>
   </tr>
 </table>
 
-<details>
-  <summary><strong>Ver más capturas de la aplicación</strong></summary>
-  <p align="center">
-    <a href="fastlane/metadata/android/en-US/images/phoneScreenshots/02.png">
-      <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/02.png" alt="Cálculo de fechas e intervalos de ciclos lunares" width="500" />
-    </a>
-  </p>
-  <p align="center"><sub>Herramientas de fechas y ciclos lunares</sub></p>
-  <p align="center">
-    <a href="fastlane/metadata/android/en-US/images/phoneScreenshots/04.png">
-      <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/04.png" alt="Guía tradicional organizada por categorías relacionadas con el ciclo lunar" width="500" />
-    </a>
-  </p>
-  <p align="center"><sub>Guía tradicional del ciclo</sub></p>
-</details>
+### Capturas de pantalla
+
+> [!IMPORTANT]
+> Se retiraron de esta portada las capturas de una interfaz anterior. La galería se actualizará únicamente con imágenes reales verificadas contra el APK oficial. Las ilustraciones de módulos anteriores no representan necesariamente la experiencia actual.
+
+La descripción de las cuatro pantallas se ha contrastado con el código Android de la aplicación. No se presentan maquetas ni capturas antiguas como imágenes actuales.
 
 ---
 
